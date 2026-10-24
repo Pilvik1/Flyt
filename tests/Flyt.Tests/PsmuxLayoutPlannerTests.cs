@@ -22,6 +22,8 @@ public sealed class PsmuxLayoutPlannerTests
 
         Assert.Equal(19, commands.Count);
         Assert.Equal("new-session", commands[0].Arguments[0]);
+        Assert.Contains("240", commands[0].Arguments);
+        Assert.Contains("60", commands[0].Arguments);
         Assert.Contains(commands, command => command.Arguments.Contains("claude"));
         Assert.Contains(commands, command => command.Arguments.Contains("codex"));
         Assert.Contains(commands, command => command.Arguments.Contains("pwsh"));

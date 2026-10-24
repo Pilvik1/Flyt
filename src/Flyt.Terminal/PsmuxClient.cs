@@ -45,6 +45,10 @@ public sealed class PsmuxClient(
                         "#{pane_id}",
                         "-s",
                         normalizedName,
+                        "-x",
+                        "240",
+                        "-y",
+                        "60",
                         "-c",
                         sessions[0].WorkingDirectory,
                     ]),
@@ -73,6 +77,13 @@ public sealed class PsmuxClient(
                         ]),
                     cancellationToken).ConfigureAwait(false);
                 var paneId = RequirePaneId(splitResult.StandardOutput);
+                if (panes.Any(value => string.Equals(value.PaneId, paneId, StringComparison.Ordinal)))
+                {
+                    throw new InvalidOperationException(
+                        $"psmux reused pane id '{paneId}' while creating '{sessions[index].Name}'. "
+                        + "The detached canvas is too small or psmux failed to split the window.");
+                }
+
                 panes.Add(new DeskPaneHandle(paneId, sessions[index]));
                 await ConfigurePaneAsync(paneId, sessions[index], cancellationToken).ConfigureAwait(false);
             }

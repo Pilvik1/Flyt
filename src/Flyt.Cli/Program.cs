@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Flyt.Core;
 using Flyt.Persistence;
 using Flyt.Providers;
@@ -12,7 +13,11 @@ namespace Flyt.Cli;
 internal static partial class Program
 {
     private static readonly SystemCommandExecutor CommandExecutor = new();
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     public static async Task<int> Main(string[] args)
     {

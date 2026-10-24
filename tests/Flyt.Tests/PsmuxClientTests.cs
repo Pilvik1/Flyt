@@ -22,6 +22,8 @@ public sealed class PsmuxClientTests
         Assert.Equal("my-desk", started.SessionName);
         Assert.Equal(["%1", "%2", "%3"], started.Panes.Select(pane => pane.PaneId));
         Assert.Equal(16, executor.Invocations.Count);
+        Assert.Contains("240", executor.Invocations[0].Arguments);
+        Assert.Contains("60", executor.Invocations[0].Arguments);
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%1"));
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%2"));
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%3"));
@@ -45,6 +47,21 @@ public sealed class PsmuxClientTests
         Assert.Contains("rolled back", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("kill-session", executor.Invocations[^1].Arguments[0]);
         Assert.Contains("partial", executor.Invocations[^1].Arguments);
+    }
+
+    [Fact]
+    public async Task StartDesk_RejectsReusedPaneIdAndRollsBack()
+    {
+        var executor = new FakeCommandExecutor(reusePaneId: true);
+        var client = new PsmuxClient(executor);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.StartDeskAsync(
+                "duplicate-pane",
+                [Session(AgentProvider.Shell, "one", "pwsh"), Session(AgentProvider.Shell, "two", "pwsh")]));
+
+        Assert.Contains("rolled back", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("kill-session", executor.Invocations[^1].Arguments[0]);
     }
 
     [Fact]
@@ -128,10 +145,12 @@ public sealed class PsmuxClientTests
     {
         private int _nextPaneId = 1;
         private readonly int? _failAtInvocation;
+        private readonly bool _reusePaneId;
 
-        public FakeCommandExecutor(int? failAtInvocation = null)
+        public FakeCommandExecutor(int? failAtInvocation = null, bool reusePaneId = false)
         {
             _failAtInvocation = failAtInvocation;
+            _reusePaneId = reusePaneId;
         }
 
         public List<CommandInvocation> Invocations { get; } = [];
@@ -150,7 +169,7 @@ public sealed class PsmuxClientTests
 
             var command = invocation.Arguments[0];
             var output = NextOutput ?? (command is "new-session" or "split-window"
-                ? $"%{_nextPaneId++}{Environment.NewLine}"
+                ? $"%{(_reusePaneId ? 1 : _nextPaneId++)}{Environment.NewLine}"
                 : string.Empty);
             return Task.FromResult(new CommandResult(0, output, string.Empty));
         }

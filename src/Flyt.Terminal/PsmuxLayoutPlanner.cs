@@ -25,6 +25,10 @@ public static class PsmuxLayoutPlanner
                 "#{pane_id}",
                 "-s",
                 normalizedName,
+                "-x",
+                "240",
+                "-y",
+                "60",
                 "-c",
                 sessions[0].WorkingDirectory,
             ]));
