@@ -18,7 +18,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>flyt</AssemblyName>
     <RootNamespace>Flyt.Cli</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
 
 </Project>

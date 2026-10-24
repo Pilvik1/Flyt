@@ -30,3 +30,17 @@ jobs:
         run: |
           Import-Module ./powershell/Flyt/Flyt.psd1 -Force
           Get-Command Start-FlytDesk -ErrorAction Stop
+      - name: Package and install smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/package.ps1 -Runtime win-x64
+          $package = Get-ChildItem ./artifacts/packages/FlytV1-*-win-x64.zip -File -ErrorAction Stop | Select-Object -First 1
+          ./scripts/install.ps1 `
+            -PackagePath $package.FullName `
+            -ChecksumPath "$($package.FullName).sha256" `
+            -InstallRoot "$env:RUNNER_TEMP/flyt-app" `
+            -ModuleRoot "$env:RUNNER_TEMP/flyt-modules/Flyt" `
+            -SkipPathUpdate `
+            -NonInteractive
+          & "$env:RUNNER_TEMP/flyt-app/current/flyt.exe" version

@@ -22,9 +22,10 @@
 
 - [ ] Native Windows psmux execution.
 - [x] Deterministic one-to-six-session layouts.
-- [ ] Central live dashboard.
+- [ ] Central live dashboard with role labels, pane state, and attention cues.
 - [x] Focus, attach, pane restart, logs, stop, and child-tree cancellation.
 - [x] Durable Desk/pane registry and live-state reconciliation.
+- [ ] Directory-aware session templates and operator broadcast.
 - [ ] Prove restart re-adoption on the target Windows host.
 
 ## Phase 3 — Mission foundation
@@ -34,6 +35,7 @@
 - [ ] Claude structured adapter.
 - [ ] Codex app-server adapter.
 - [ ] Git worktree manager and ownership rules.
+- [ ] Hash-bound approval for repository setup and teardown hooks.
 - [x] Pause/resume/cancel with exact prior-state recovery.
 - [ ] Recovery of interrupted provider execution.
 
@@ -47,8 +49,8 @@
 
 ## Phase 5 — daily driver
 
-- [ ] Windows installer and update path.
+- [x] Checksum-verified Windows installer and private release/update path.
 - [ ] Failure-injection tests.
 - [ ] Redaction and log retention.
-- [ ] Polished terminal theme.
+- [ ] Polished terminal theme with stable role colors and task labels.
 - [ ] Five real missions across two weeks with at least 50% fewer interventions.
