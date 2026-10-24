@@ -77,6 +77,20 @@ public sealed class PsmuxClientTests
     }
 
     [Fact]
+    public async Task ListSessions_TreatsStoppedServerAsEmpty()
+    {
+        var executor = new FakeCommandExecutor
+        {
+            NextResult = new CommandResult(1, string.Empty, "psmux: no server running on test socket"),
+        };
+        var client = new PsmuxClient(executor);
+
+        var sessions = await client.ListSessionsAsync();
+
+        Assert.Empty(sessions);
+    }
+
+    [Fact]
     public async Task ListPanes_ParsesStableIdentityAndRuntimeState()
     {
         var executor = new FakeCommandExecutor
@@ -157,6 +171,8 @@ public sealed class PsmuxClientTests
 
         public string? NextOutput { get; init; }
 
+        public CommandResult? NextResult { get; init; }
+
         public Task<CommandResult> RunAsync(
             CommandInvocation invocation,
             CancellationToken cancellationToken = default)
@@ -165,6 +181,11 @@ public sealed class PsmuxClientTests
             if (_failAtInvocation == Invocations.Count)
             {
                 return Task.FromResult(new CommandResult(42, string.Empty, "synthetic failure"));
+            }
+
+            if (NextResult is not null)
+            {
+                return Task.FromResult(NextResult);
             }
 
             var command = invocation.Arguments[0];

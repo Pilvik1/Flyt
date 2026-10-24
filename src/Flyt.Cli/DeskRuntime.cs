@@ -137,7 +137,7 @@ internal static class DeskRuntime
 
             var expensive = updated.Panes.Count(pane =>
                 pane.Tags.Contains("expensive", StringComparer.OrdinalIgnoreCase)
-                && pane.Status is DeskPaneStatus.Running or DeskPaneStatus.Working);
+                && pane.Status == DeskPaneStatus.Working);
             if (expensive > updated.MaxConcurrentExpensiveTasks)
             {
                 warnings.Add(

@@ -141,9 +141,22 @@ public sealed class PsmuxClient(
     public async Task<IReadOnlyList<string>> ListSessionsAsync(
         CancellationToken cancellationToken = default)
     {
-        var result = await RunRequiredAsync(
+        var result = await _executor.RunAsync(
             new CommandInvocation(executable, ["list-sessions", "-F", "#{session_name}"]),
             cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            var error = $"{result.StandardError}\n{result.StandardOutput}";
+            if (error.Contains("no server running", StringComparison.OrdinalIgnoreCase)
+                || error.Contains("no sessions", StringComparison.OrdinalIgnoreCase))
+            {
+                return [];
+            }
+
+            throw new InvalidOperationException(
+                $"Command failed ({result.ExitCode}): {executable} list-sessions{Environment.NewLine}"
+                + result.StandardError.Trim());
+        }
 
         return result.StandardOutput
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
