@@ -69,6 +69,90 @@ public sealed class DeskRuntimeTests : IDisposable
         Assert.Contains("synthetic crash", receipt.RecentOutput, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task QueueDispatcher_EnforcesExpensiveConcurrencyAndAdvancesInOrder()
+    {
+        Directory.CreateDirectory(_directory);
+        var store = new FlytStateStore(Path.Combine(_directory, "queue.db"));
+        await store.InitializeAsync();
+        var now = DateTimeOffset.UtcNow;
+        var deskId = Guid.NewGuid();
+        var desk = new Desk(
+            deskId, "queue", _directory, "test", [], 1, 12_000, DeskStatus.Running,
+            [
+                CreatePane(deskId, "%1", "verifier-a", now),
+                CreatePane(deskId, "%2", "verifier-b", now),
+            ],
+            now, now, now);
+        desk = await store.SaveDeskAsync(desk);
+        var first = await store.EnqueueWorkItemAsync("queue", "verifier-a", "Run suite A", expensive: true);
+        var second = await store.EnqueueWorkItemAsync("queue", "verifier-b", "Run suite B", expensive: true);
+        var executor = new RuntimeExecutor();
+        var psmux = new PsmuxClient(executor);
+
+        var initial = new DeskRuntimeSnapshot([desk], [], new Dictionary<string, PaneResourceSnapshot>(), []);
+        var firstPass = await DeskQueueDispatcher.DispatchAsync(psmux, store, initial, "queue", default);
+        var afterFirst = await store.ListWorkItemsAsync("queue");
+
+        Assert.Equal(1, firstPass.Dispatched);
+        Assert.Equal(1, firstPass.Remaining);
+        Assert.Equal(DeskWorkItemStatus.Dispatched, afterFirst.Single(value => value.Id == first.Id).Status);
+        Assert.Equal(DeskWorkItemStatus.Queued, afterFirst.Single(value => value.Id == second.Id).Status);
+
+        await Task.Delay(5);
+        desk = await store.UpdateDeskRuntimeAsync(
+            "queue",
+            DeskStatus.Running,
+            [
+                new DeskPaneRuntime("verifier-a", "%1", DeskPaneStatus.Done, DeskStateSource.ProgramStatus, 1, null),
+                new DeskPaneRuntime("verifier-b", "%2", DeskPaneStatus.Idle, DeskStateSource.ProgramStatus, 2, null),
+            ]);
+        var secondPass = await DeskQueueDispatcher.DispatchAsync(
+            psmux,
+            store,
+            new DeskRuntimeSnapshot([desk], [], new Dictionary<string, PaneResourceSnapshot>(), []),
+            "queue",
+            default);
+        var afterSecond = await store.ListWorkItemsAsync("queue");
+
+        Assert.Equal(1, secondPass.Completed);
+        Assert.Equal(1, secondPass.Dispatched);
+        Assert.Equal(DeskWorkItemStatus.Completed, afterSecond.Single(value => value.Id == first.Id).Status);
+        Assert.Equal(DeskWorkItemStatus.Dispatched, afterSecond.Single(value => value.Id == second.Id).Status);
+        Assert.Equal(2, executor.Invocations.Count(value => value.Arguments[0] == "send-paste"));
+    }
+
+    [Fact]
+    public async Task QueueDispatcher_HoldsExpensiveWorkWhenMemoryGateIsClosed()
+    {
+        var store = await CreateDeskAsync("memory-gate");
+        var desk = await store.GetDeskAsync("memory-gate");
+        Assert.NotNull(desk);
+        await store.EnqueueWorkItemAsync("memory-gate", "builder", "Run tests", expensive: true);
+        var executor = new RuntimeExecutor();
+        var resources = new Dictionary<string, PaneResourceSnapshot>
+        {
+            [DeskRuntime.ResourceKey("memory-gate", "builder")] =
+                new PaneResourceSnapshot(123, 13_000L * 1024 * 1024),
+        };
+
+        var result = await DeskQueueDispatcher.DispatchAsync(
+            new PsmuxClient(executor),
+            store,
+            new DeskRuntimeSnapshot([desk!], [], resources, []),
+            "memory-gate",
+            default);
+
+        Assert.Equal(0, result.Dispatched);
+        Assert.Equal(1, result.Remaining);
+        Assert.DoesNotContain(executor.Invocations, value => value.Arguments[0] == "send-paste");
+    }
+
+    private DeskPane CreatePane(Guid deskId, string paneId, string name, DateTimeOffset now) => new(
+        Guid.NewGuid(), deskId, paneId, AgentProvider.Codex, name, _directory,
+        "codex", "verifier", "Verify", "green", ["expensive"], null,
+        DeskPaneStatus.Idle, DeskStateSource.Registered, null, null, now, now, now);
+
     private async Task<FlytStateStore> CreateDeskAsync(string name)
     {
         Directory.CreateDirectory(_directory);

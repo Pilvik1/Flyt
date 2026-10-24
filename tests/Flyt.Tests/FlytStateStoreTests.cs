@@ -240,6 +240,52 @@ public sealed class FlytStateStoreTests : IDisposable
         Assert.Null(loaded.ResumeState);
     }
 
+    [Fact]
+    public async Task DeskHistoryAndQueue_PersistSearchAndTransitions()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "history.db"));
+        await store.InitializeAsync();
+        var now = DateTimeOffset.UtcNow;
+        var deskId = Guid.NewGuid();
+        await store.SaveDeskAsync(new Desk(
+            deskId,
+            "history-desk",
+            _directory,
+            "full-review",
+            ["history"],
+            1,
+            1024,
+            DeskStatus.Running,
+            [new DeskPane(
+                Guid.NewGuid(), deskId, "%1", AgentProvider.Codex, "verifier", _directory,
+                "codex", "verifier", "Verify", "green", ["expensive"], null,
+                DeskPaneStatus.Idle, DeskStateSource.Registered, null, null, now, now, now)],
+            now,
+            now,
+            now));
+
+        var queued = await store.EnqueueWorkItemAsync(
+            "history-desk",
+            "verifier",
+            "Run the full test suite",
+            expensive: true);
+        var dispatched = await store.TransitionWorkItemAsync(queued.Id, DeskWorkItemStatus.Dispatched);
+        var completed = await store.TransitionWorkItemAsync(
+            queued.Id,
+            DeskWorkItemStatus.Completed,
+            "All tests passed.");
+
+        var items = await store.ListWorkItemsAsync("history-desk");
+        var events = await store.ListDeskEventsAsync("history-desk", "completed");
+
+        Assert.Equal(DeskWorkItemStatus.Dispatched, dispatched.Status);
+        Assert.NotNull(dispatched.DispatchedAt);
+        Assert.Equal(DeskWorkItemStatus.Completed, completed.Status);
+        Assert.NotNull(completed.CompletedAt);
+        Assert.Equal("All tests passed.", Assert.Single(items).Outcome);
+        Assert.Contains(events, value => value.EventType == "work.completed");
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

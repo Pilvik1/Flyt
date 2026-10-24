@@ -81,6 +81,37 @@ public sealed record DeskFailureReceipt(
     long? WorkingSetBytes,
     DateTimeOffset OccurredAt);
 
+public sealed record DeskEvent(
+    long Sequence,
+    Guid DeskId,
+    string DeskName,
+    string EventType,
+    string? PaneName,
+    string Detail,
+    DateTimeOffset OccurredAt);
+
+public enum DeskWorkItemStatus
+{
+    Queued,
+    Dispatched,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+public sealed record DeskWorkItem(
+    Guid Id,
+    Guid DeskId,
+    string DeskName,
+    string PaneName,
+    string Payload,
+    bool Expensive,
+    DeskWorkItemStatus Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DispatchedAt,
+    DateTimeOffset? CompletedAt,
+    string? Outcome);
+
 public sealed record DeskPaneRuntime(
     string Name,
     string PaneId,

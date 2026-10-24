@@ -163,6 +163,45 @@ public sealed class FlytStateStore
                 """,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (version < 4)
+        {
+            await ApplyMigrationAsync(
+                connection,
+                4,
+                """
+                CREATE TABLE desk_events (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    desk_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    pane_name TEXT NULL,
+                    detail TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    FOREIGN KEY (desk_id) REFERENCES desks(id)
+                );
+
+                CREATE INDEX ix_desk_events_desk_time
+                    ON desk_events(desk_id, occurred_at DESC);
+
+                CREATE TABLE desk_work_items (
+                    id TEXT PRIMARY KEY,
+                    desk_id TEXT NOT NULL,
+                    pane_name TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    expensive INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    dispatched_at TEXT NULL,
+                    completed_at TEXT NULL,
+                    outcome TEXT NULL,
+                    FOREIGN KEY (desk_id) REFERENCES desks(id)
+                );
+
+                CREATE INDEX ix_desk_work_items_desk_status_time
+                    ON desk_work_items(desk_id, status, created_at);
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateMissionAsync(
@@ -545,6 +584,19 @@ public sealed class FlytStateStore
                 .ConfigureAwait(false);
         }
 
+        if (existing is null)
+        {
+            await InsertDeskEventAsync(
+                connection,
+                sqliteTransaction,
+                deskId,
+                "desk.created",
+                paneName: null,
+                $"Desk '{saved.SessionName}' created from template '{saved.TemplateName ?? "manual"}'.",
+                timestamp,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return saved;
     }
@@ -701,6 +753,41 @@ public sealed class FlytStateStore
             }
         }
 
+        if (desk.Status != status)
+        {
+            await InsertDeskEventAsync(
+                connection,
+                sqliteTransaction,
+                desk.Id,
+                "desk.state",
+                paneName: null,
+                $"Desk state changed from {desk.Status} to {status}.",
+                timestamp,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        var runtimeByName = paneRuntimes.ToDictionary(value => value.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var pane in desk.Panes)
+        {
+            var nextStatus = runtimeByName.TryGetValue(pane.Name, out var runtime)
+                ? runtime.Status
+                : defaultPaneStatus;
+            if (pane.Status == nextStatus)
+            {
+                continue;
+            }
+
+            await InsertDeskEventAsync(
+                connection,
+                sqliteTransaction,
+                desk.Id,
+                "pane.state",
+                pane.Name,
+                $"Pane state changed from {pane.Status} to {nextStatus}.",
+                timestamp,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return await GetDeskAsync(sessionName, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Desk disappeared after reconciliation.");
@@ -782,6 +869,303 @@ public sealed class FlytStateStore
 
         return receipts;
     }
+
+    public async Task AddDeskEventAsync(
+        Guid deskId,
+        string eventType,
+        string? paneName,
+        string detail,
+        DateTimeOffset? occurredAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(detail);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await InsertDeskEventAsync(
+            connection,
+            transaction: null,
+            deskId,
+            eventType,
+            paneName,
+            detail,
+            occurredAt ?? DateTimeOffset.UtcNow,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<DeskEvent>> ListDeskEventsAsync(
+        string? sessionName = null,
+        string? search = null,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 1000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        var events = new List<DeskEvent>();
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT e.sequence, e.desk_id, d.session_name, e.event_type,
+                   e.pane_name, e.detail, e.occurred_at
+            FROM desk_events e
+            JOIN desks d ON d.id = e.desk_id
+            WHERE ($sessionName IS NULL OR d.session_name = $sessionName COLLATE NOCASE)
+              AND ($search IS NULL
+                   OR d.session_name LIKE $pattern
+                   OR e.event_type LIKE $pattern
+                   OR COALESCE(e.pane_name, '') LIKE $pattern
+                   OR e.detail LIKE $pattern)
+            ORDER BY e.sequence DESC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$sessionName", sessionName ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$search", search ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$pattern", search is null ? DBNull.Value : $"%{search}%");
+        command.Parameters.AddWithValue("$limit", limit);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            events.Add(new DeskEvent(
+                reader.GetInt64(0),
+                Guid.Parse(reader.GetString(1)),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.GetString(5),
+                ParseDate(reader.GetString(6))));
+        }
+
+        return events;
+    }
+
+    public async Task<DeskWorkItem> EnqueueWorkItemAsync(
+        string sessionName,
+        string paneName,
+        string payload,
+        bool expensive,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(paneName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(payload);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var sqliteTransaction = (SqliteTransaction)transaction;
+        var desk = await GetDeskAsync(connection, sqliteTransaction, sessionName, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Desk '{sessionName}' is not registered.");
+        if (!desk.Panes.Any(value => string.Equals(value.Name, paneName, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new KeyNotFoundException($"Pane '{paneName}' is not registered in desk '{sessionName}'.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var item = new DeskWorkItem(
+            Guid.NewGuid(), desk.Id, desk.SessionName, paneName, payload, expensive,
+            DeskWorkItemStatus.Queued, now, null, null, null);
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = sqliteTransaction;
+            command.CommandText = """
+                INSERT INTO desk_work_items (
+                    id, desk_id, pane_name, payload, expensive, status,
+                    created_at, dispatched_at, completed_at, outcome
+                ) VALUES (
+                    $id, $deskId, $paneName, $payload, $expensive, $status,
+                    $createdAt, NULL, NULL, NULL
+                );
+                """;
+            AddWorkItemParameters(command, item);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await InsertDeskEventAsync(
+            connection, sqliteTransaction, desk.Id, "work.queued", paneName,
+            $"Queued work item {item.Id:D}{(expensive ? " (expensive)" : string.Empty)}.",
+            now, cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return item;
+    }
+
+    public async Task<IReadOnlyList<DeskWorkItem>> ListWorkItemsAsync(
+        string sessionName,
+        DeskWorkItemStatus? status = null,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 1000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        var items = new List<DeskWorkItem>();
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT w.id, w.desk_id, d.session_name, w.pane_name, w.payload,
+                   w.expensive, w.status, w.created_at, w.dispatched_at,
+                   w.completed_at, w.outcome
+            FROM desk_work_items w
+            JOIN desks d ON d.id = w.desk_id
+            WHERE d.session_name = $sessionName COLLATE NOCASE
+              AND ($status IS NULL OR w.status = $status)
+            ORDER BY w.created_at, w.id
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$sessionName", sessionName);
+        command.Parameters.AddWithValue("$status", status?.ToString() ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$limit", limit);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            items.Add(ReadWorkItem(reader));
+        }
+
+        return items;
+    }
+
+    public async Task<DeskWorkItem> TransitionWorkItemAsync(
+        Guid workItemId,
+        DeskWorkItemStatus next,
+        string? outcome = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var sqliteTransaction = (SqliteTransaction)transaction;
+        var current = await GetWorkItemAsync(connection, sqliteTransaction, workItemId, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Work item '{workItemId:D}' was not found.");
+        if (!CanTransitionWorkItem(current.Status, next))
+        {
+            throw new InvalidOperationException($"Cannot transition work item from {current.Status} to {next}.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var dispatchedAt = next == DeskWorkItemStatus.Dispatched ? now : current.DispatchedAt;
+        var completedAt = next is DeskWorkItemStatus.Completed or DeskWorkItemStatus.Failed or DeskWorkItemStatus.Cancelled
+            ? now
+            : current.CompletedAt;
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = sqliteTransaction;
+            command.CommandText = """
+                UPDATE desk_work_items
+                SET status = $next,
+                    dispatched_at = $dispatchedAt,
+                    completed_at = $completedAt,
+                    outcome = $outcome
+                WHERE id = $id AND status = $expected;
+                """;
+            command.Parameters.AddWithValue("$next", next.ToString());
+            command.Parameters.AddWithValue(
+                "$dispatchedAt", dispatchedAt is null ? DBNull.Value : FormatDate(dispatchedAt.Value));
+            command.Parameters.AddWithValue(
+                "$completedAt", completedAt is null ? DBNull.Value : FormatDate(completedAt.Value));
+            command.Parameters.AddWithValue("$outcome", outcome ?? current.Outcome ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$id", workItemId.ToString("D"));
+            command.Parameters.AddWithValue("$expected", current.Status.ToString());
+            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+            {
+                throw new InvalidOperationException($"Work item '{workItemId:D}' changed concurrently.");
+            }
+        }
+
+        await InsertDeskEventAsync(
+            connection, sqliteTransaction, current.DeskId, $"work.{next.ToString().ToLowerInvariant()}",
+            current.PaneName, $"Work item {current.Id:D} -> {next}{(outcome is null ? "." : $": {outcome}")}",
+            now, cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return current with
+        {
+            Status = next,
+            DispatchedAt = dispatchedAt,
+            CompletedAt = completedAt,
+            Outcome = outcome ?? current.Outcome,
+        };
+    }
+
+    private static async Task InsertDeskEventAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        Guid deskId,
+        string eventType,
+        string? paneName,
+        string detail,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO desk_events (desk_id, event_type, pane_name, detail, occurred_at)
+            VALUES ($deskId, $eventType, $paneName, $detail, $occurredAt);
+            """;
+        command.Parameters.AddWithValue("$deskId", deskId.ToString("D"));
+        command.Parameters.AddWithValue("$eventType", eventType);
+        command.Parameters.AddWithValue("$paneName", paneName ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$detail", detail);
+        command.Parameters.AddWithValue("$occurredAt", FormatDate(occurredAt));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<DeskWorkItem?> GetWorkItemAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        Guid workItemId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT w.id, w.desk_id, d.session_name, w.pane_name, w.payload,
+                   w.expensive, w.status, w.created_at, w.dispatched_at,
+                   w.completed_at, w.outcome
+            FROM desk_work_items w
+            JOIN desks d ON d.id = w.desk_id
+            WHERE w.id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", workItemId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? ReadWorkItem(reader)
+            : null;
+    }
+
+    private static DeskWorkItem ReadWorkItem(SqliteDataReader reader) => new(
+        Guid.Parse(reader.GetString(0)),
+        Guid.Parse(reader.GetString(1)),
+        reader.GetString(2),
+        reader.GetString(3),
+        reader.GetString(4),
+        reader.GetBoolean(5),
+        Enum.Parse<DeskWorkItemStatus>(reader.GetString(6)),
+        ParseDate(reader.GetString(7)),
+        reader.IsDBNull(8) ? null : ParseDate(reader.GetString(8)),
+        reader.IsDBNull(9) ? null : ParseDate(reader.GetString(9)),
+        reader.IsDBNull(10) ? null : reader.GetString(10));
+
+    private static void AddWorkItemParameters(SqliteCommand command, DeskWorkItem item)
+    {
+        command.Parameters.AddWithValue("$id", item.Id.ToString("D"));
+        command.Parameters.AddWithValue("$deskId", item.DeskId.ToString("D"));
+        command.Parameters.AddWithValue("$paneName", item.PaneName);
+        command.Parameters.AddWithValue("$payload", item.Payload);
+        command.Parameters.AddWithValue("$expensive", item.Expensive);
+        command.Parameters.AddWithValue("$status", item.Status.ToString());
+        command.Parameters.AddWithValue("$createdAt", FormatDate(item.CreatedAt));
+    }
+
+    private static bool CanTransitionWorkItem(DeskWorkItemStatus current, DeskWorkItemStatus next) =>
+        (current, next) switch
+        {
+            (DeskWorkItemStatus.Queued, DeskWorkItemStatus.Dispatched or DeskWorkItemStatus.Cancelled) => true,
+            (DeskWorkItemStatus.Dispatched,
+                DeskWorkItemStatus.Completed or DeskWorkItemStatus.Failed or DeskWorkItemStatus.Cancelled) => true,
+            _ => false,
+        };
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
     {

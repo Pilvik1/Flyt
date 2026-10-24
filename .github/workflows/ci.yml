@@ -22,6 +22,30 @@ jobs:
       - run: dotnet restore FlytV1.slnx
       - run: dotnet build FlytV1.slnx --configuration Release --no-restore
       - run: dotnet test FlytV1.slnx --configuration Release --no-build
+      - name: Install pinned psmux for live Windows proof
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $uri = 'https://github.com/psmux/psmux/releases/download/v3.4.0/psmux-v3.4.0-windows-x64.zip'
+          $archive = Join-Path $env:RUNNER_TEMP 'psmux-v3.4.0-windows-x64.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'psmux-v3.4.0'
+          Invoke-WebRequest -Uri $uri -OutFile $archive
+          $expected = 'a66b6be7c13c6fa0dc3660a267b9e34eaa91a4eb7f07fbd55a0468018bd0f721'
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "psmux checksum mismatch: $actual" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $destination | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$destination;$env:PATH"
+          psmux -V
+      - name: Live six-pane Windows psmux integration proof
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $psmux = Join-Path $env:RUNNER_TEMP 'psmux-v3.4.0'
+          $env:PATH = "$psmux;$env:PATH"
+          ./scripts/ci-psmux-live.ps1 `
+            -FlytDll ./src/Flyt.Cli/bin/Release/net10.0/flyt.dll `
+            -WorkspacePath $PWD.Path
       - name: CLI smoke test
         run: dotnet src/Flyt.Cli/bin/Release/net10.0/flyt.dll desk start --name ci-smoke --path . --sessions "claude:builder,codex:reviewer,shell:ops" --dry-run
       - name: PowerShell module import
@@ -37,6 +61,13 @@ jobs:
             'Get-FlytDeskFailure'
             'New-FlytDeskTemplate'
             'New-FlytDeskHandoff'
+            'Open-FlytDesk'
+            'Add-FlytDeskWork'
+            'Get-FlytDeskWork'
+            'Invoke-FlytDeskQueue'
+            'Stop-FlytDeskWork'
+            'Get-FlytDeskHistory'
+            'Test-FlytDeskNotification'
           ) | ForEach-Object { Get-Command $_ -ErrorAction Stop }
       - name: Package and install smoke test
         if: runner.os == 'Windows'
