@@ -15,12 +15,5 @@ dotnet build $solution --configuration $Configuration --no-restore
 dotnet test $solution --configuration $Configuration --no-build
 
 if ($PublishWindows) {
-    $output = Join-Path $root 'artifacts/win-x64'
-    dotnet publish (Join-Path $root 'src/Flyt.Cli/Flyt.Cli.csproj') `
-        --configuration $Configuration `
-        --runtime win-x64 `
-        --self-contained true `
-        -p:PublishSingleFile=true `
-        --output $output
+    & (Join-Path $PSScriptRoot 'package.ps1') -Configuration $Configuration -Runtime win-x64
 }
-

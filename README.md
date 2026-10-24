@@ -24,6 +24,34 @@ Foundation slice under active development:
 
 Native Windows integration with psmux, Claude Code, and Codex must pass the Phase 0 proof before the project is considered usable.
 
+## Install on Windows
+
+FlytV1 ships as a self-contained Windows package, so the .NET SDK is not required.
+Because this repository is private, the bootstrap uses an authenticated GitHub CLI
+session instead of pretending that a public `irm | iex` URL exists.
+
+Prerequisites: Windows 11, PowerShell 7, and an authenticated GitHub CLI (`gh auth login`).
+
+```powershell
+gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | pwsh -NoProfile -Command -
+```
+
+The installer selects x64 or ARM64 automatically, downloads the latest private
+release, verifies its SHA-256 checksum, installs the `flyt` executable and PowerShell
+module for the current user, updates the user PATH, and runs a smoke test. Existing
+installations are restored if installation fails.
+
+psmux remains explicit because dependency installation changes the machine. To
+install it with Flyt, download the installer first and pass `-InstallPsmux`:
+
+```powershell
+$installer = Join-Path $env:TEMP 'install-flyt.ps1'; gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | Set-Content $installer; pwsh -NoProfile -File $installer -InstallPsmux; Remove-Item $installer
+```
+
+Useful installer options include `-Version 0.3.0`, `-Architecture x64|arm64`,
+`-SkipPathUpdate`, and local `-PackagePath` / `-ChecksumPath` inputs for offline or
+CI validation.
+
 ## Architecture
 
 ```text
