@@ -18,10 +18,14 @@
 - [x] Initial provider diagnostics and psmux command planning.
 - [x] Green Windows and Ubuntu CI on the foundation.
 
-## Phase 2 — Desk MVP
+## Phase 2 — Desk cockpit
 
-- [ ] Native Windows psmux execution.
+- [x] Native Windows psmux execution in CI.
 - [x] Deterministic one-to-six-session layouts.
+- [x] Adaptive one-to-six-pane layouts and zoom-preserving focus mode.
+- [x] Integrated role/state headers, active-pane emphasis, and aggregate status line.
+- [x] One-command start/reopen/monitor/attach with focus persistence.
+- [x] Keyboard-first pane jumps and contextual action popups.
 - [x] Central live dashboard with role labels, pane state, and attention cues.
 - [x] Focus, attach, pane restart, logs, stop, and child-tree cancellation.
 - [x] Durable Desk/pane registry and live-state reconciliation.

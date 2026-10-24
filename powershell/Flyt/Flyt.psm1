@@ -172,12 +172,17 @@ function Repair-FlytDesk {
 }
 
 function Open-FlytDesk {
-    [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Mandatory)][string] $Name)
+    [CmdletBinding()]
+    param(
+        [string] $Name,
+        [string] $Path = (Get-Location).Path,
+        [string] $Template
+    )
 
-    if ($PSCmdlet.ShouldProcess($Name, 'Reopen stopped or missing Flyt desk')) {
-        Invoke-Flyt desk reopen --name $Name
-    }
+    $arguments = @('desk', 'open', '--path', (Resolve-Path -LiteralPath $Path).Path)
+    if ($Name) { $arguments += @('--name', $Name) }
+    if ($Template) { $arguments += @('--template', $Template) }
+    Invoke-Flyt @arguments
 }
 
 function Add-FlytDeskWork {

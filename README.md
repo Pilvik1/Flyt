@@ -23,6 +23,8 @@ Foundation slice under active development:
 - targeted multiline send, recovery previews, and durable failure receipts;
 - structured builder/reviewer/verifier handoff bundles;
 - resource-gated work queues with durable lifecycle history and Desk reopen;
+- integrated psmux cockpit chrome with adaptive layouts, focus persistence, and action popups;
+- one-command Desk start/reopen/monitor/attach through `flyt desk open`;
 - native Windows toast notifications with terminal OSC fallback;
 - evidence-bearing mission state machine;
 - Manual, Bounded, and Auto policy profiles;
@@ -54,7 +56,7 @@ install it with Flyt, download the installer first and pass `-InstallPsmux`:
 $installer = Join-Path $env:TEMP 'install-flyt.ps1'; gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | Set-Content $installer; pwsh -NoProfile -File $installer -InstallPsmux; Remove-Item $installer
 ```
 
-Useful installer options include `-Version 0.4.1`, `-Architecture x64|arm64`,
+Useful installer options include `-Version 0.5.0`, `-Architecture x64|arm64`,
 `-SkipPathUpdate`, and local `-PackagePath` / `-ChecksumPath` inputs for offline or
 CI validation.
 
@@ -130,19 +132,22 @@ dotnet run --project src/Flyt.Cli -- desk logs --name demo --pane builder --line
 dotnet run --project src/Flyt.Cli -- desk restart-pane --name demo --pane builder
 ```
 
-Create a reusable repo-local template, launch it, and open the live cockpit:
+Create a reusable repo-local template and open the integrated cockpit:
 
 ```powershell
 flyt desk template init --path .
-flyt desk start --path . --template default
-flyt desk watch --name full-review --notify
+flyt desk open --path . --template default
 ```
 
-Desk colours use separate channels: the role is stable (`planner`, `builder`,
-`reviewer`, `verifier`, `ops`) while attention state changes between Working,
-Needs Input, Done, Failed, Paused, and Unknown. Pane titles also carry coloured
-state glyphs so the psmux grid remains scannable while the Flyt cockpit is not
-in the foreground.
+`desk open` starts or reopens the Desk, restores its prior focus, starts live state
+reconciliation and queue dispatch, and attaches to psmux. The grid uses coloured
+role headers, explicit state text/glyphs, heavy active borders, dim inactive panes,
+adaptive layouts, and an aggregate repo/branch/agent/queue/RAM status line.
+
+Cockpit controls use `Ctrl+b` followed by `A` (next attention), `Z` (zoom), `S`
+(send), `R` (restart), `H` (handoff), `Q` (queue), `L` (logs), or `O` (action
+menu). `Alt+1` through `Alt+6` jump directly to panes. `Ctrl+b` then `?` shows
+the psmux shortcut overlay.
 
 Target selected agents without retyping a prompt in every pane:
 

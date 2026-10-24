@@ -87,17 +87,14 @@ public sealed class PsmuxClient(
                 panes.Add(new DeskPaneHandle(paneId, sessions[index]));
                 await ConfigurePaneAsync(paneId, sessions[index], cancellationToken).ConfigureAwait(false);
                 await RunRequiredAsync(
-                    new CommandInvocation(
-                        executable,
-                        ["select-layout", "-t", $"{normalizedName}:0", "tiled"]),
+                    PsmuxLayoutPlanner.LayoutCommand(executable, normalizedName, sessions.Count),
                     cancellationToken).ConfigureAwait(false);
             }
 
             await RunRequiredAsync(
-                new CommandInvocation(
-                    executable,
-                    ["select-layout", "-t", $"{normalizedName}:0", "tiled"]),
+                PsmuxLayoutPlanner.LayoutCommand(executable, normalizedName, sessions.Count),
                 cancellationToken).ConfigureAwait(false);
+            await ConfigureRoleBorderFormatAsync(normalizedName, panes, cancellationToken).ConfigureAwait(false);
 
             return new DeskStartResult(normalizedName, panes);
         }
@@ -193,6 +190,113 @@ public sealed class PsmuxClient(
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task ApplyLayoutAsync(
+        string sessionName,
+        int paneCount,
+        CancellationToken cancellationToken = default)
+    {
+        await RunRequiredAsync(
+            PsmuxLayoutPlanner.LayoutCommand(
+                executable,
+                PsmuxLayoutPlanner.NormalizeSessionName(sessionName),
+                paneCount),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task ConfigureDeskControlsAsync(
+        string sessionName,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedName = PsmuxLayoutPlanner.NormalizeSessionName(sessionName);
+        var bindings = new (string[] Prefix, string[] Command)[]
+        {
+            (["A"], ["run-shell", "-b", PowerShellCommand($"flyt desk focus --name {normalizedName} --next")]),
+            (["Z"], ["resize-pane", "-Z"]),
+            (["S"], PopupAction(normalizedName, "send")),
+            (["R"], PopupAction(normalizedName, "restart")),
+            (["H"], PopupAction(normalizedName, "handoff")),
+            (["Q"], PopupAction(normalizedName, "queue")),
+            (["L"], PopupAction(normalizedName, "logs", keepOpen: true)),
+            (["O"], PopupAction(normalizedName, "menu", keepOpen: true)),
+        };
+
+        foreach (var (prefix, command) in bindings)
+        {
+            await RunRequiredAsync(
+                new CommandInvocation(executable, ["bind-key", .. prefix, .. command]),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        for (var index = 0; index < PsmuxLayoutPlanner.MaximumSessions; index++)
+        {
+            await RunRequiredAsync(
+                new CommandInvocation(
+                    executable,
+                    ["bind-key", "-n", $"M-{index + 1}", "select-pane", "-t", $"{normalizedName}:0.{index}"]),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task ConfigureRoleBorderFormatAsync(
+        string sessionName,
+        IReadOnlyList<DeskPaneHandle> panes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(panes);
+        if (panes.Count is < 1 or > PsmuxLayoutPlanner.MaximumSessions)
+        {
+            throw new ArgumentOutOfRangeException(nameof(panes), "Flyt supports one to six pane styles.");
+        }
+
+        var style = "#[fg=white]#[bold]";
+        for (var index = panes.Count - 1; index >= 0; index--)
+        {
+            var pane = panes[index];
+            var color = DeskPalette.NormalizeColor(pane.Session.Color);
+            style = $"#{{?#{{==:#{{pane_id}},{pane.PaneId}}},#[fg={color}]#[bold],{style}}}";
+        }
+
+        var format = $" {style}#{{pane_index}} · #{{pane_title}} #[default]";
+        await RunRequiredAsync(
+            new CommandInvocation(
+                executable,
+                [
+                    "set-option", "-t", PsmuxLayoutPlanner.NormalizeSessionName(sessionName),
+                    "-g", "pane-border-format", format,
+                ]),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task UpdateDeskChromeAsync(
+        string sessionName,
+        string workspaceLabel,
+        string summary,
+        DeskPaneStatus activeStatus,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedName = PsmuxLayoutPlanner.NormalizeSessionName(sessionName);
+        var stateColor = activeStatus switch
+        {
+            DeskPaneStatus.NeedsInput => "yellow",
+            DeskPaneStatus.Failed => "red",
+            DeskPaneStatus.Done => "green",
+            _ => "white",
+        };
+        var options = new[]
+        {
+            ("status-left", $"#[fg=cyan,bold] FLYT #[default] · {SanitizeFormat(workspaceLabel)} "),
+            ("status-right", $" {SanitizeFormat(summary)} · %H:%M "),
+            ("pane-active-border-style", $"fg={stateColor},bold"),
+        };
+
+        foreach (var (name, value) in options)
+        {
+            await RunRequiredAsync(
+                new CommandInvocation(executable, ["set-option", "-t", normalizedName, "-g", name, value]),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public async Task SendTextAsync(
         string paneId,
         string text,
@@ -255,8 +359,9 @@ public sealed class PsmuxClient(
             cancellationToken).ConfigureAwait(false);
         var paneId = RequirePaneId(result.StandardOutput);
         await ConfigurePaneAsync(paneId, session, cancellationToken).ConfigureAwait(false);
+        var paneCount = (await ListPanesAsync(normalizedName, cancellationToken).ConfigureAwait(false)).Count;
         await RunRequiredAsync(
-            new CommandInvocation(executable, ["select-layout", "-t", $"{normalizedName}:0", "tiled"]),
+            PsmuxLayoutPlanner.LayoutCommand(executable, normalizedName, paneCount),
             cancellationToken).ConfigureAwait(false);
         return new DeskPaneHandle(paneId, session);
     }
@@ -312,7 +417,7 @@ public sealed class PsmuxClient(
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task ConfigureDeskPresentationAsync(
+    public async Task ConfigureDeskPresentationAsync(
         string sessionName,
         CancellationToken cancellationToken)
     {
@@ -321,8 +426,19 @@ public sealed class PsmuxClient(
             ("program-status", "on"),
             ("remain-on-exit", "failed"),
             ("pane-border-status", "top"),
-            ("pane-border-format", " #{pane_index} #{pane_title} "),
+            ("pane-border-format", " #[bold]#{pane_index}#[default] · #{pane_title} "),
             ("pane-border-indicators", "both"),
+            ("pane-border-lines", "heavy"),
+            ("pane-border-style", "fg=brightblack"),
+            ("pane-active-border-style", "fg=white,bold"),
+            ("window-style", "dim=12"),
+            ("window-active-style", "dim=0"),
+            ("status", "1"),
+            ("status-style", "bg=black,fg=white"),
+            ("status-left-style", "fg=cyan,bold"),
+            ("status-right-style", "fg=brightblack"),
+            ("popup-border-style", "fg=cyan,bold"),
+            ("popup-border-lines", "rounded"),
             ("status-interval", "1"),
         };
 
@@ -333,6 +449,24 @@ public sealed class PsmuxClient(
                 cancellationToken).ConfigureAwait(false);
         }
     }
+
+    private static string[] PopupAction(string sessionName, string action, bool keepOpen = false)
+    {
+        var keep = keepOpen ? "-K" : "-E";
+        return
+        [
+            "display-popup", "-w", "82%", "-h", "72%", keep,
+            PowerShellCommand($"flyt desk action --name {sessionName} --pane-id '#{{pane_id}}' --action {action}"),
+        ];
+    }
+
+    private static string PowerShellCommand(string command) =>
+        $"pwsh -NoProfile -Command \"{command.Replace("\"", "`\"", StringComparison.Ordinal)}\"";
+
+    private static string SanitizeFormat(string value) => value
+        .Replace("#", "", StringComparison.Ordinal)
+        .Replace("\r", " ", StringComparison.Ordinal)
+        .Replace("\n", " ", StringComparison.Ordinal);
 
     private async Task<CommandResult> RunRequiredAsync(
         CommandInvocation invocation,

@@ -25,6 +25,8 @@ internal static partial class Program
         return args[0].ToLowerInvariant() switch
         {
             "start" => await StartDeskAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
+            "open" => await OpenDeskAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
+            "action" => await RunDeskActionAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
             "status" => await ShowDeskStatusAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             "watch" => await WatchDeskAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             "send" => await SendDeskTextAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
@@ -140,10 +142,13 @@ internal static partial class Program
                 now)).ToArray(),
             now,
             now,
-            now);
+            now,
+            PsmuxLayoutPlanner.LayoutNameForCount(started.Panes.Count),
+            started.Panes[0].Session.Name);
 
         try
         {
+            await psmux.ConfigureDeskControlsAsync(started.SessionName, cancellationToken).ConfigureAwait(false);
             await store.SaveDeskAsync(desk, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception persistenceException)
@@ -155,13 +160,13 @@ internal static partial class Program
             catch (Exception cleanupException)
             {
                 throw new AggregateException(
-                    "Desk started but registry persistence and psmux cleanup both failed.",
+                    "Desk initialization failed and psmux cleanup also failed.",
                     persistenceException,
                     cleanupException);
             }
 
             throw new InvalidOperationException(
-                "Desk registry persistence failed; the psmux session was rolled back.",
+                "Desk initialization failed; the psmux session was rolled back.",
                 persistenceException);
         }
 

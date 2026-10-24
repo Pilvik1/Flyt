@@ -44,7 +44,9 @@ public sealed record Desk(
     IReadOnlyList<DeskPane> Panes,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset? LastReconciledAt);
+    DateTimeOffset? LastReconciledAt,
+    string LayoutName = "tiled",
+    string? FocusedPaneName = null);
 
 public sealed record DeskPane(
     Guid Id,
@@ -118,4 +120,5 @@ public sealed record DeskPaneRuntime(
     DeskPaneStatus Status,
     DeskStateSource Source,
     int? ProcessId,
-    int? ExitCode);
+    int? ExitCode,
+    bool IsActive = false);

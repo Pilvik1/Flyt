@@ -169,7 +169,8 @@ internal static class DeskRuntime
             status,
             source,
             pane.ProcessId,
-            pane.ExitCode);
+            pane.ExitCode,
+            pane.IsActive);
     }
 
     private static PaneResourceSnapshot ProbeResources(int? processId)

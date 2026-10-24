@@ -5,6 +5,7 @@ namespace Flyt.Terminal;
 public static class PsmuxLayoutPlanner
 {
     public const int MaximumSessions = 6;
+    public const int MaximumPaneTitleLength = 78;
 
     public static IReadOnlyList<CommandInvocation> BuildPreview(
         string executable,
@@ -55,14 +56,10 @@ public static class PsmuxLayoutPlanner
                 $"$pane{index}",
                 PaneTitle(sessions[index], DeskPaneStatus.Starting)));
             commands.Add(SendCommand(executable, $"$pane{index}", sessions[index].LaunchCommand));
-            commands.Add(new CommandInvocation(
-                executable,
-                ["select-layout", "-t", $"{normalizedName}:0", "tiled"]));
+            commands.Add(LayoutCommand(executable, normalizedName, sessions.Count));
         }
 
-        commands.Add(new CommandInvocation(
-            executable,
-            ["select-layout", "-t", $"{normalizedName}:0", "tiled"]));
+        commands.Add(LayoutCommand(executable, normalizedName, sessions.Count));
         return commands;
     }
 
@@ -103,11 +100,46 @@ public static class PsmuxLayoutPlanner
     internal static CommandInvocation TitleCommand(string executable, string paneId, string title) =>
         new(executable, ["select-pane", "-t", paneId, "-T", title]);
 
-    public static string PaneTitle(AgentSessionSpec session, DeskPaneStatus status) =>
-        $"{session.Name} | {DeskPalette.Glyph(status)} {StateLabel(status)} | {session.Role} | {session.Task}";
+    public static string PaneTitle(AgentSessionSpec session, DeskPaneStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        var repository = new DirectoryInfo(session.WorkingDirectory).Name;
+        var prefix = $"{session.Name} · {session.Role.ToUpperInvariant()} · {StateGlyph(status)} {StateLabel(status)} · ";
+        var suffix = $" · {repository}";
+        var available = Math.Max(8, MaximumPaneTitleLength - prefix.Length - suffix.Length);
+        var task = Compact(session.Task, available);
+        return $"{prefix}{task}{suffix}";
+    }
 
     public static string StableNameFromTitle(string title) =>
-        title.Split('|', 2, StringSplitOptions.TrimEntries)[0];
+        title.Split(['·', '|'], 2, StringSplitOptions.TrimEntries)[0];
+
+    public static string LayoutNameForCount(int paneCount) => paneCount switch
+    {
+        1 => "tiled",
+        2 => "even-horizontal",
+        3 => "main-vertical",
+        4 => "tiled",
+        5 or 6 => "tiled",
+        _ => throw new ArgumentOutOfRangeException(nameof(paneCount), "Flyt supports one to six panes."),
+    };
+
+    internal static CommandInvocation LayoutCommand(string executable, string sessionName, int paneCount) =>
+        new(executable, ["select-layout", "-t", $"{sessionName}:0", LayoutNameForCount(paneCount)]);
+
+    private static string Compact(string value, int maximumLength) => value.Length <= maximumLength
+        ? value
+        : $"{value[..Math.Max(1, maximumLength - 1)].TrimEnd()}…";
+
+    private static string StateGlyph(DeskPaneStatus status) => status switch
+    {
+        DeskPaneStatus.Working or DeskPaneStatus.Running => "●",
+        DeskPaneStatus.NeedsInput => "!",
+        DeskPaneStatus.Done => "✓",
+        DeskPaneStatus.Failed => "×",
+        DeskPaneStatus.Starting => "◌",
+        _ => "○",
+    };
 
     private static string StateLabel(DeskPaneStatus status) => status == DeskPaneStatus.NeedsInput
         ? "NEEDS INPUT"

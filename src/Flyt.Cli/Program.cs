@@ -246,6 +246,7 @@ internal static partial class Program
             new Panel(
                 """
                 [aqua]flyt doctor[/]                         Check the local toolchain
+                [aqua]flyt desk open [[options]][/]          Open the integrated Desk cockpit
                 [aqua]flyt desk start [[options]][/]         Create a psmux workspace
                 [aqua]flyt desk status [[--json]][/]         Reconcile registered desks
                 [aqua]flyt desk watch [[--notify]][/]        Live colour-coded cockpit
@@ -277,6 +278,8 @@ internal static partial class Program
         AnsiConsole.MarkupLine(
             "[aqua]flyt desk start[/] [[--name NAME]] [[--path PATH]] "
             + "[[--template NAME|PATH]] [[--sessions claude:planner,codex:reviewer]] [[--dry-run]]");
+        AnsiConsole.MarkupLine(
+            "[aqua]flyt desk open[/] [[--name NAME]] [[--path PATH]] [[--template NAME|PATH]] [[--no-attach]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk status|watch[/] [[filters]] [[--json|--notify]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk focus[/] --name NAME [[--pane PANE|--next]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk restart-pane|logs[/] --name NAME --pane PANE");

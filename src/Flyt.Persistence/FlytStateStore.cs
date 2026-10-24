@@ -202,6 +202,18 @@ public sealed class FlytStateStore
                 """,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (version < 5)
+        {
+            await ApplyMigrationAsync(
+                connection,
+                5,
+                """
+                ALTER TABLE desks ADD COLUMN layout_name TEXT NOT NULL DEFAULT 'tiled';
+                ALTER TABLE desks ADD COLUMN focused_pane_name TEXT NULL;
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateMissionAsync(
@@ -550,11 +562,13 @@ public sealed class FlytStateStore
                 INSERT INTO desks (
                     id, session_name, workspace_path, template_name, tags_json,
                     max_concurrent_expensive_tasks, memory_warning_megabytes,
-                    status, created_at, updated_at, last_reconciled_at
+                    status, created_at, updated_at, last_reconciled_at,
+                    layout_name, focused_pane_name
                 ) VALUES (
                     $id, $sessionName, $workspacePath, $templateName, $tagsJson,
                     $maxConcurrentExpensiveTasks, $memoryWarningMegabytes,
-                    $status, $createdAt, $updatedAt, $lastReconciledAt
+                    $status, $createdAt, $updatedAt, $lastReconciledAt,
+                    $layoutName, $focusedPaneName
                 )
                 ON CONFLICT(session_name) DO UPDATE SET
                     workspace_path = excluded.workspace_path,
@@ -563,6 +577,8 @@ public sealed class FlytStateStore
                     max_concurrent_expensive_tasks = excluded.max_concurrent_expensive_tasks,
                     memory_warning_megabytes = excluded.memory_warning_megabytes,
                     status = excluded.status,
+                    layout_name = excluded.layout_name,
+                    focused_pane_name = excluded.focused_pane_name,
                     updated_at = excluded.updated_at,
                     last_reconciled_at = excluded.last_reconciled_at;
                 """;
@@ -620,7 +636,8 @@ public sealed class FlytStateStore
         command.CommandText = """
             SELECT id, session_name, workspace_path, template_name, tags_json,
                    max_concurrent_expensive_tasks, memory_warning_megabytes,
-                   status, created_at, updated_at, last_reconciled_at
+                   status, created_at, updated_at, last_reconciled_at,
+                   layout_name, focused_pane_name
             FROM desks
             ORDER BY updated_at DESC;
             """;
@@ -677,16 +694,21 @@ public sealed class FlytStateStore
             .ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Desk '{sessionName}' was not found in the Flyt registry.");
         var timestamp = DateTimeOffset.UtcNow;
+        var focusedPaneName = paneRuntimes.SingleOrDefault(value => value.IsActive)?.Name;
 
         await using (var updateDesk = connection.CreateCommand())
         {
             updateDesk.Transaction = sqliteTransaction;
             updateDesk.CommandText = """
                 UPDATE desks
-                SET status = $status, updated_at = $updatedAt, last_reconciled_at = $reconciledAt
+                SET status = $status,
+                    focused_pane_name = COALESCE($focusedPaneName, focused_pane_name),
+                    updated_at = $updatedAt,
+                    last_reconciled_at = $reconciledAt
                 WHERE id = $id;
                 """;
             updateDesk.Parameters.AddWithValue("$status", status.ToString());
+            updateDesk.Parameters.AddWithValue("$focusedPaneName", focusedPaneName ?? (object)DBNull.Value);
             updateDesk.Parameters.AddWithValue("$updatedAt", FormatDate(timestamp));
             updateDesk.Parameters.AddWithValue("$reconciledAt", FormatDate(timestamp));
             updateDesk.Parameters.AddWithValue("$id", desk.Id.ToString("D"));
@@ -1244,7 +1266,8 @@ public sealed class FlytStateStore
         command.CommandText = """
             SELECT id, session_name, workspace_path, template_name, tags_json,
                    max_concurrent_expensive_tasks, memory_warning_megabytes,
-                   status, created_at, updated_at, last_reconciled_at
+                   status, created_at, updated_at, last_reconciled_at,
+                   layout_name, focused_pane_name
             FROM desks
             WHERE session_name = $sessionName;
             """;
@@ -1420,6 +1443,8 @@ public sealed class FlytStateStore
         command.Parameters.AddWithValue(
             "$lastReconciledAt",
             desk.LastReconciledAt is null ? DBNull.Value : FormatDate(desk.LastReconciledAt.Value));
+        command.Parameters.AddWithValue("$layoutName", desk.LayoutName);
+        command.Parameters.AddWithValue("$focusedPaneName", desk.FocusedPaneName ?? (object)DBNull.Value);
     }
 
     private static Desk ReadDesk(SqliteDataReader reader, IReadOnlyList<DeskPane> panes) => new(
@@ -1434,7 +1459,9 @@ public sealed class FlytStateStore
         panes,
         ParseDate(reader.GetString(8)),
         ParseDate(reader.GetString(9)),
-        reader.IsDBNull(10) ? null : ParseDate(reader.GetString(10)));
+        reader.IsDBNull(10) ? null : ParseDate(reader.GetString(10)),
+        reader.GetString(11),
+        reader.IsDBNull(12) ? null : reader.GetString(12));
 
     private static async Task<Mission> TransitionMissionAsync(
         SqliteConnection connection,

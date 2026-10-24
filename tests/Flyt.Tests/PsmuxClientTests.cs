@@ -6,7 +6,7 @@ namespace Flyt.Tests;
 public sealed class PsmuxClientTests
 {
     [Fact]
-    public async Task StartDesk_UsesReturnedPaneIdsAndFinishesWithTiledLayout()
+    public async Task StartDesk_UsesReturnedPaneIdsAndFinishesWithAdaptiveLayout()
     {
         var executor = new FakeCommandExecutor();
         var client = new PsmuxClient(executor);
@@ -21,13 +21,73 @@ public sealed class PsmuxClientTests
 
         Assert.Equal("my-desk", started.SessionName);
         Assert.Equal(["%1", "%2", "%3"], started.Panes.Select(pane => pane.PaneId));
-        Assert.Equal(18, executor.Invocations.Count);
+        Assert.True(executor.Invocations.Count >= 18);
         Assert.Contains("240", executor.Invocations[0].Arguments);
         Assert.Contains("60", executor.Invocations[0].Arguments);
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%1"));
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%2"));
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%3"));
-        Assert.Equal("select-layout", executor.Invocations[^1].Arguments[0]);
+        var layout = executor.Invocations.Last(value => value.Arguments[0] == "select-layout");
+        Assert.Equal("main-vertical", layout.Arguments[^1]);
+        Assert.Contains(executor.Invocations, value => value.Arguments.Contains("pane-border-format"));
+    }
+
+    [Fact]
+    public async Task ConfigureDeskControls_BindsAttentionActionsAndDirectPaneJumps()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(executor);
+
+        await client.ConfigureDeskControlsAsync("daily");
+
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.SequenceEqual([
+                "bind-key", "A", "run-shell", "-b",
+                "pwsh -NoProfile -Command \"flyt desk focus --name daily --next\"",
+            ]));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("display-popup")
+            && value.Arguments.Any(argument => argument.Contains("--action send", StringComparison.Ordinal)));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.SequenceEqual(["bind-key", "-n", "M-6", "select-pane", "-t", "daily:0.5"]));
+    }
+
+    [Fact]
+    public async Task UpdateDeskChrome_SetsSummaryAndAttentionBorder()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(executor);
+
+        await client.UpdateDeskChromeAsync(
+            "daily", "FlytV1/main", "6 agents · 1 waiting", DeskPaneStatus.NeedsInput);
+
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("status-left")
+            && value.Arguments.Any(argument => argument.Contains(" FLYT ", StringComparison.Ordinal)));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("pane-active-border-style") && value.Arguments.Contains("fg=yellow,bold"));
+    }
+
+    [Fact]
+    public async Task ConfigureRoleBorderFormat_MapsPaneIndexesToStableRoleColours()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(executor);
+
+        await client.ConfigureRoleBorderFormatAsync(
+            "daily",
+            [
+                new DeskPaneHandle("%7", AgentSessionSpec.Create(
+                    AgentProvider.Claude, "builder", Environment.CurrentDirectory, "claude", role: "builder")),
+                new DeskPaneHandle("%9", AgentSessionSpec.Create(
+                    AgentProvider.Codex, "reviewer", Environment.CurrentDirectory, "codex", role: "reviewer")),
+            ]);
+
+        var invocation = Assert.Single(executor.Invocations);
+        var format = invocation.Arguments[^1];
+        Assert.Contains("#{pane_id},%7", format, StringComparison.Ordinal);
+        Assert.Contains("fg=blue", format, StringComparison.Ordinal);
+        Assert.Contains("fg=magenta", format, StringComparison.Ordinal);
     }
 
     [Fact]

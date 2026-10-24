@@ -230,6 +230,13 @@ internal static partial class Program
             var started = await psmux.StartDeskAsync(desk.SessionName, sessions, cancellationToken)
                 .ConfigureAwait(false);
             var byName = started.Panes.ToDictionary(value => value.Session.Name, StringComparer.OrdinalIgnoreCase);
+            await psmux.ConfigureDeskControlsAsync(desk.SessionName, cancellationToken).ConfigureAwait(false);
+            await psmux.ApplyLayoutAsync(desk.SessionName, started.Panes.Count, cancellationToken)
+                .ConfigureAwait(false);
+            if (desk.FocusedPaneName is not null && byName.TryGetValue(desk.FocusedPaneName, out var focused))
+            {
+                await psmux.FocusAsync(focused.PaneId, cancellationToken).ConfigureAwait(false);
+            }
             await store.SaveDeskAsync(desk with
             {
                 Status = DeskStatus.Running,
@@ -245,6 +252,7 @@ internal static partial class Program
         }
         else
         {
+            await psmux.ConfigureDeskControlsAsync(desk.SessionName, cancellationToken).ConfigureAwait(false);
             foreach (var pane in candidates)
             {
                 var session = SessionFromPane(pane, providers);
@@ -257,6 +265,13 @@ internal static partial class Program
                     await psmux.RestartPaneAsync(pane.PaneId, session, cancellationToken).ConfigureAwait(false);
                 }
             }
+
+            await psmux.ConfigureRoleBorderFormatAsync(
+                desk.SessionName,
+                desk.Panes.Select(pane => new DeskPaneHandle(
+                    pane.PaneId,
+                    SessionFromPane(pane, providers))).ToArray(),
+                cancellationToken).ConfigureAwait(false);
         }
 
         await DeskRuntime.ReconcileAsync(
