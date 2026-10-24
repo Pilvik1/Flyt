@@ -20,7 +20,7 @@ public sealed class PsmuxLayoutPlannerTests
 
         var commands = PsmuxLayoutPlanner.BuildPreview("psmux", "Flyt Demo", sessions);
 
-        Assert.Equal(19, commands.Count);
+        Assert.Equal(24, commands.Count);
         Assert.Equal("new-session", commands[0].Arguments[0]);
         Assert.Contains("240", commands[0].Arguments);
         Assert.Contains("60", commands[0].Arguments);

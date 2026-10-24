@@ -86,6 +86,11 @@ public sealed class PsmuxClient(
 
                 panes.Add(new DeskPaneHandle(paneId, sessions[index]));
                 await ConfigurePaneAsync(paneId, sessions[index], cancellationToken).ConfigureAwait(false);
+                await RunRequiredAsync(
+                    new CommandInvocation(
+                        executable,
+                        ["select-layout", "-t", $"{normalizedName}:0", "tiled"]),
+                    cancellationToken).ConfigureAwait(false);
             }
 
             await RunRequiredAsync(
@@ -127,7 +132,8 @@ public sealed class PsmuxClient(
             }
 
             throw new InvalidOperationException(
-                $"Desk startup failed; partial psmux session '{normalizedName}' was rolled back.",
+                $"Desk startup failed; partial psmux session '{normalizedName}' was rolled back: "
+                + startException.Message,
                 startException);
         }
     }

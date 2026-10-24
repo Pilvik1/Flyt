@@ -21,7 +21,7 @@ public sealed class PsmuxClientTests
 
         Assert.Equal("my-desk", started.SessionName);
         Assert.Equal(["%1", "%2", "%3"], started.Panes.Select(pane => pane.PaneId));
-        Assert.Equal(16, executor.Invocations.Count);
+        Assert.Equal(18, executor.Invocations.Count);
         Assert.Contains("240", executor.Invocations[0].Arguments);
         Assert.Contains("60", executor.Invocations[0].Arguments);
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%1"));
