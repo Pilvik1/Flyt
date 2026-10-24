@@ -27,6 +27,8 @@
 - [x] Durable Desk/pane registry and live-state reconciliation.
 - [x] Directory-aware session templates and targeted operator broadcast.
 - [x] Durable failure receipts and structured Desk handoff bundles.
+- [x] Resource-gated queue, searchable history, Desk reopen, and Windows toast path.
+- [x] Real six-pane psmux shell lifecycle in Windows CI.
 - [ ] Prove restart re-adoption on the target Windows host.
 
 ## Phase 3 — Mission foundation

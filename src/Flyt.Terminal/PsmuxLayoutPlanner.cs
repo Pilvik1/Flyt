@@ -25,6 +25,10 @@ public static class PsmuxLayoutPlanner
                 "#{pane_id}",
                 "-s",
                 normalizedName,
+                "-x",
+                "240",
+                "-y",
+                "60",
                 "-c",
                 sessions[0].WorkingDirectory,
             ]));
@@ -51,6 +55,9 @@ public static class PsmuxLayoutPlanner
                 $"$pane{index}",
                 PaneTitle(sessions[index], DeskPaneStatus.Starting)));
             commands.Add(SendCommand(executable, $"$pane{index}", sessions[index].LaunchCommand));
+            commands.Add(new CommandInvocation(
+                executable,
+                ["select-layout", "-t", $"{normalizedName}:0", "tiled"]));
         }
 
         commands.Add(new CommandInvocation(

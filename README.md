@@ -22,6 +22,8 @@ Foundation slice under active development:
 - repo-local Desk templates and resumable provider identities;
 - targeted multiline send, recovery previews, and durable failure receipts;
 - structured builder/reviewer/verifier handoff bundles;
+- resource-gated work queues with durable lifecycle history and Desk reopen;
+- native Windows toast notifications with terminal OSC fallback;
 - evidence-bearing mission state machine;
 - Manual, Bounded, and Auto policy profiles;
 - initial tests and Windows CI.
@@ -52,7 +54,7 @@ install it with Flyt, download the installer first and pass `-InstallPsmux`:
 $installer = Join-Path $env:TEMP 'install-flyt.ps1'; gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | Set-Content $installer; pwsh -NoProfile -File $installer -InstallPsmux; Remove-Item $installer
 ```
 
-Useful installer options include `-Version 0.4.0`, `-Architecture x64|arm64`,
+Useful installer options include `-Version 0.4.1`, `-Architecture x64|arm64`,
 `-SkipPathUpdate`, and local `-PackagePath` / `-ChecksumPath` inputs for offline or
 CI validation.
 
@@ -155,7 +157,22 @@ Recover and inspect failures:
 flyt desk recover --name full-review
 flyt desk recover --name full-review --apply
 flyt desk failures --name full-review
+flyt desk reopen --name full-review
+flyt desk history --name full-review --search failure
 ```
+
+Queue expensive work instead of starting every build or verification job at once:
+
+```powershell
+flyt desk queue add --name full-review --pane verifier `
+  --text "Run the full release test suite" --expensive
+flyt desk queue list --name full-review
+flyt desk watch --name full-review --notify
+```
+
+`desk watch` dispatches queued work only when the target pane is available, the
+Desk memory gate is open, and the configured expensive-work concurrency ceiling
+has capacity. `flyt desk queue dispatch` runs the same dispatcher once.
 
 Create a structured handoff bundle and deliver its path to the reviewer:
 
@@ -166,7 +183,7 @@ flyt desk handoff --name full-review --from builder --to reviewer `
 ```
 
 See [docs/desk-cockpit.md](docs/desk-cockpit.md) for templates, selectors,
-attention sources, colours, recovery, resource warnings, and handoffs.
+attention sources, colours, recovery, resource-gated queues, history, and handoffs.
 
 ## Safety defaults
 

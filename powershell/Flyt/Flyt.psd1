@@ -1,6 +1,6 @@
 @{
     RootModule = 'Flyt.psm1'
-    ModuleVersion = '0.4.0'
+    ModuleVersion = '0.4.1'
     GUID = '6f86803f-14bf-483b-80fd-b6376b775481'
     Author = 'Håkon Pilvik'
     CompanyName = 'HomeBase'
@@ -16,6 +16,13 @@
         'Watch-FlytDesk',
         'Send-FlytDeskText',
         'Repair-FlytDesk',
+        'Open-FlytDesk',
+        'Add-FlytDeskWork',
+        'Get-FlytDeskWork',
+        'Invoke-FlytDeskQueue',
+        'Stop-FlytDeskWork',
+        'Get-FlytDeskHistory',
+        'Test-FlytDeskNotification',
         'Get-FlytDeskFailure',
         'New-FlytDeskTemplate',
         'New-FlytDeskHandoff',

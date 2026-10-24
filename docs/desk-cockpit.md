@@ -37,9 +37,10 @@ steps or replace deterministic verification.
 
 ## Cockpit and filtering
 
-`flyt desk watch --notify` refreshes the cockpit and emits an OSC 9/BEL terminal
-notification when a pane newly needs input, completes, or fails. Filter `status`
-or `watch` with `--name`, `--role`, `--tag`, `--state`, or `--search`.
+`flyt desk watch --notify` refreshes the cockpit and emits both a native Windows
+toast and an OSC 9/BEL terminal fallback when a pane newly needs input, completes,
+or fails. Filter `status` or `watch` with `--name`, `--role`, `--tag`, `--state`,
+or `--search`. Use `flyt desk notify` to test notification delivery directly.
 
 `flyt desk focus --name NAME --next` prioritizes Needs Input, Failed, then Done.
 
@@ -60,13 +61,30 @@ The first dead transition stores a failure receipt with pane identity, command,
 working directory, exit code, recent output, tracked memory, and timestamp.
 Inspect receipts with `flyt desk failures --name NAME`.
 
-## Resources and notifications
+## Resource-gated work queue
 
 The cockpit displays tracked pane-process memory. Templates define a memory
 warning threshold and a maximum number of simultaneously active panes tagged
-`expensive`. V0.4 warns rather than killing or pausing interactive work. Queueing
-and enforcement belong to Mission execution, where ownership and retry policy are
-explicit.
+`expensive`. Queue work with:
+
+```powershell
+flyt desk queue add --name NAME --pane verifier --text "Run tests" --expensive
+flyt desk queue list --name NAME
+flyt desk queue dispatch --name NAME
+```
+
+The dispatcher never kills or pauses interactive agents. It claims queued work
+durably, then sends it only when the target pane is available, the Desk is below
+its memory threshold, and the expensive-work ceiling has capacity. `desk watch`
+runs the dispatcher continuously. Completion or failure is derived from a newer
+structured pane transition after dispatch, not stale output.
+
+## History and reopen
+
+Pane transitions, sends, queue actions, recovery, and handoffs are written to the
+SQLite event ledger. Search them with `flyt desk history --search TEXT`; add
+`--name NAME` to scope the result. `flyt desk reopen --name NAME` recreates a
+stopped or missing Desk from its durable pane definitions and provider resume IDs.
 
 ## Structured handoffs
 
@@ -76,6 +94,8 @@ working-tree diff exists. Optional decisions, verification evidence, and blocker
 travel with the bundle. `--send` pastes the artifact path and requested action into
 the destination pane.
 
-The target-host proof remains mandatory: Windows CI proves portable behavior, but
-not authenticated providers, ConPTY rendering, notification delivery, or restart
-re-adoption on Håkon's machine.
+Windows CI runs a real six-pane psmux lifecycle using shell panes and proves
+re-adoption, targeted paste, queue dispatch, handoff creation, history search,
+stop, and reopen. The target-host proof remains mandatory for authenticated
+Claude/Codex sessions, visual ConPTY colour rendering, and interactive toast
+delivery on Håkon's machine.

@@ -171,6 +171,89 @@ function Repair-FlytDesk {
     }
 }
 
+function Open-FlytDesk {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([Parameter(Mandatory)][string] $Name)
+
+    if ($PSCmdlet.ShouldProcess($Name, 'Reopen stopped or missing Flyt desk')) {
+        Invoke-Flyt desk reopen --name $Name
+    }
+}
+
+function Add-FlytDeskWork {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Pane,
+        [Parameter(Mandatory)][string] $Text,
+        [switch] $Expensive
+    )
+
+    $arguments = @('desk', 'queue', 'add', '--name', $Name, '--pane', $Pane, '--text', $Text)
+    if ($Expensive) { $arguments += '--expensive' }
+    Invoke-Flyt @arguments
+}
+
+function Get-FlytDeskWork {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [ValidateSet('Queued', 'Dispatched', 'Completed', 'Failed', 'Cancelled')]
+        [string] $Status,
+        [ValidateRange(1, 1000)][int] $Limit = 100,
+        [switch] $Json
+    )
+
+    $arguments = @('desk', 'queue', 'list', '--name', $Name, '--limit', $Limit)
+    if ($Status) { $arguments += @('--status', $Status) }
+    if ($Json) { $arguments += '--json' }
+    Invoke-Flyt @arguments
+}
+
+function Invoke-FlytDeskQueue {
+    [CmdletBinding()]
+    param([string] $Name)
+
+    $arguments = @('desk', 'queue', 'dispatch')
+    if ($Name) { $arguments += @('--name', $Name) }
+    Invoke-Flyt @arguments
+}
+
+function Stop-FlytDeskWork {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([Parameter(Mandatory)][guid] $Id)
+
+    if ($PSCmdlet.ShouldProcess($Id, 'Cancel queued Flyt work')) {
+        Invoke-Flyt desk queue cancel --id ($Id.ToString('D'))
+    }
+}
+
+function Get-FlytDeskHistory {
+    [CmdletBinding()]
+    param(
+        [string] $Name,
+        [string] $Search,
+        [ValidateRange(1, 1000)][int] $Limit = 100,
+        [switch] $Json
+    )
+
+    $arguments = @('desk', 'history', '--limit', $Limit)
+    if ($Name) { $arguments += @('--name', $Name) }
+    if ($Search) { $arguments += @('--search', $Search) }
+    if ($Json) { $arguments += '--json' }
+    Invoke-Flyt @arguments
+}
+
+function Test-FlytDeskNotification {
+    [CmdletBinding()]
+    param(
+        [string] $Title = 'Flyt Desk',
+        [string] $Text = 'Native notification delivery is operational.'
+    )
+
+    Invoke-Flyt desk notify --title $Title --text $Text
+}
+
 function Get-FlytDeskFailure {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string] $Name, [switch] $Json)
@@ -347,6 +430,13 @@ Export-ModuleMember -Function @(
     'Watch-FlytDesk',
     'Send-FlytDeskText',
     'Repair-FlytDesk',
+    'Open-FlytDesk',
+    'Add-FlytDeskWork',
+    'Get-FlytDeskWork',
+    'Invoke-FlytDeskQueue',
+    'Stop-FlytDeskWork',
+    'Get-FlytDeskHistory',
+    'Test-FlytDeskNotification',
     'Get-FlytDeskFailure',
     'New-FlytDeskTemplate',
     'New-FlytDeskHandoff',

@@ -11,7 +11,10 @@ namespace Flyt.Cli;
 
 internal static partial class Program
 {
-    private static Table BuildDeskDashboard(DeskRuntimeSnapshot snapshot, string[] args)
+    private static Table BuildDeskDashboard(
+        DeskRuntimeSnapshot snapshot,
+        string[] args,
+        DeskDispatchResult? dispatch = null)
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
@@ -24,6 +27,10 @@ internal static partial class Program
             .AddColumn("Provider")
             .AddColumn("Memory")
             .AddColumn("Tags");
+        if (dispatch is not null && dispatch.Remaining > 0)
+        {
+            table.Caption($"[yellow]Queue: {dispatch.Remaining} waiting[/]");
+        }
 
         foreach (var desk in snapshot.Desks)
         {
@@ -71,15 +78,23 @@ internal static partial class Program
 
         var snapshot = await DeskRuntime.ReconcileAsync(
             psmux, store, applyStyles: true, captureFailures: true, cancellationToken).ConfigureAwait(false);
+        var notification = new DesktopNotifier(CommandExecutor);
+        var dispatch = await DeskQueueDispatcher.DispatchAsync(
+            psmux,
+            store,
+            snapshot,
+            GetOption(args, "--name"),
+            cancellationToken).ConfigureAwait(false);
         var previous = FlattenStates(snapshot);
         if (HasFlag(args, "--once"))
         {
-            AnsiConsole.Write(BuildDeskDashboard(snapshot, args));
+            AnsiConsole.Write(BuildDeskDashboard(snapshot, args, dispatch));
             PrintDeskWarnings(snapshot);
+            PrintDispatchResult(dispatch);
             return 0;
         }
 
-        await AnsiConsole.Live(BuildDeskDashboard(snapshot, args))
+        await AnsiConsole.Live(BuildDeskDashboard(snapshot, args, dispatch))
             .AutoClear(false)
             .Overflow(VerticalOverflow.Ellipsis)
             .StartAsync(async context =>
@@ -90,13 +105,24 @@ internal static partial class Program
                     snapshot = await DeskRuntime.ReconcileAsync(
                         psmux, store, applyStyles: true, captureFailures: true, cancellationToken)
                         .ConfigureAwait(false);
+                    dispatch = await DeskQueueDispatcher.DispatchAsync(
+                        psmux,
+                        store,
+                        snapshot,
+                        GetOption(args, "--name"),
+                        cancellationToken).ConfigureAwait(false);
                     if (HasFlag(args, "--notify"))
                     {
-                        NotifyTransitions(previous, snapshot);
+                        await NotifyTransitionsAsync(
+                            previous,
+                            snapshot,
+                            notification,
+                            store,
+                            cancellationToken).ConfigureAwait(false);
                     }
 
                     previous = FlattenStates(snapshot);
-                    context.UpdateTarget(BuildDeskDashboard(snapshot, args));
+                    context.UpdateTarget(BuildDeskDashboard(snapshot, args, dispatch));
                     context.Refresh();
                 }
             }).ConfigureAwait(false);
@@ -152,6 +178,12 @@ internal static partial class Program
                 text,
                 submit: !HasFlag(args, "--no-submit"),
                 cancellationToken).ConfigureAwait(false);
+            await store.AddDeskEventAsync(
+                desk.Id,
+                "pane.sent",
+                target.Name,
+                $"Operator sent {text.Length} characters{(HasFlag(args, "--no-submit") ? " without submit" : string.Empty)}.",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         AnsiConsole.MarkupLine($"[green]Sent to {targets.Length} pane(s).[/]");
@@ -172,7 +204,7 @@ internal static partial class Program
             value.SessionName, name, StringComparison.OrdinalIgnoreCase))
             ?? throw new KeyNotFoundException($"Desk '{name}' is not registered.");
         var candidates = desk.Panes.Where(value => value.Status is
-            DeskPaneStatus.Failed or DeskPaneStatus.Exited or DeskPaneStatus.Missing).ToArray();
+            DeskPaneStatus.Failed or DeskPaneStatus.Exited or DeskPaneStatus.Missing or DeskPaneStatus.Stopped).ToArray();
 
         if (candidates.Length == 0)
         {
@@ -192,7 +224,7 @@ internal static partial class Program
             return 2;
         }
 
-        if (desk.Status == DeskStatus.Missing)
+        if (desk.Status is DeskStatus.Missing or DeskStatus.Stopped)
         {
             var sessions = desk.Panes.Select(pane => SessionFromPane(pane, providers)).ToArray();
             var started = await psmux.StartDeskAsync(desk.SessionName, sessions, cancellationToken)
@@ -229,9 +261,28 @@ internal static partial class Program
 
         await DeskRuntime.ReconcileAsync(
             psmux, store, applyStyles: true, captureFailures: false, cancellationToken).ConfigureAwait(false);
+        await store.AddDeskEventAsync(
+            desk.Id,
+            "desk.recovered",
+            paneName: null,
+            $"Recovered {candidates.Length} pane(s).",
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         AnsiConsole.MarkupLine($"[green]Recovered {candidates.Length} pane(s).[/]");
         return 0;
     }
+
+    private static Task<int> ReopenDeskAsync(
+        PsmuxClient psmux,
+        FlytStateStore store,
+        ProviderRegistry providers,
+        string[] args,
+        CancellationToken cancellationToken) =>
+        RecoverDeskAsync(
+            psmux,
+            store,
+            providers,
+            args.Concat(["--apply"]).ToArray(),
+            cancellationToken);
 
     private static async Task<int> ShowFailureReceiptsAsync(
         FlytStateStore store,
@@ -260,6 +311,180 @@ internal static partial class Program
                 receipt.ExitCode?.ToString(CultureInfo.InvariantCulture) ?? "-",
                 Markup.Escape(receipt.Reason),
                 Markup.Escape(lastLine.Length > 80 ? lastLine[..80] : lastLine));
+        }
+
+        AnsiConsole.Write(table);
+        return 0;
+    }
+
+    private static async Task<int> RunDeskQueueAsync(
+        PsmuxClient psmux,
+        FlytStateStore store,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        if (args.Length == 0 || IsHelp(args[0]))
+        {
+            AnsiConsole.MarkupLine("[aqua]flyt desk queue add|list|dispatch|cancel[/] [[options]]");
+            return 0;
+        }
+
+        switch (args[0].ToLowerInvariant())
+        {
+            case "add":
+                {
+                    var name = PsmuxLayoutPlanner.NormalizeSessionName(RequireOption(args[1..], "--name"));
+                    var pane = RequireOption(args[1..], "--pane");
+                    var text = GetOption(args[1..], "--text");
+                    if (text is null && Console.IsInputRedirected)
+                    {
+                        text = await Console.In.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+                    }
+
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        throw new ArgumentException("Provide --text TEXT or pipe text to stdin.");
+                    }
+
+                    var item = await store.EnqueueWorkItemAsync(
+                        name,
+                        pane,
+                        text,
+                        HasFlag(args[1..], "--expensive"),
+                        cancellationToken).ConfigureAwait(false);
+                    AnsiConsole.MarkupLine($"[green]Queued:[/] {item.Id:D} -> {Markup.Escape(item.PaneName)}");
+                    return 0;
+                }
+
+            case "list":
+                {
+                    var name = PsmuxLayoutPlanner.NormalizeSessionName(RequireOption(args[1..], "--name"));
+                    DeskWorkItemStatus? status = null;
+                    var rawStatus = GetOption(args[1..], "--status");
+                    if (rawStatus is not null
+                        && !Enum.TryParse<DeskWorkItemStatus>(rawStatus, ignoreCase: true, out var parsed))
+                    {
+                        throw new ArgumentException($"Unknown work status '{rawStatus}'.");
+                    }
+                    else if (rawStatus is not null
+                             && Enum.TryParse<DeskWorkItemStatus>(rawStatus, ignoreCase: true, out parsed))
+                    {
+                        status = parsed;
+                    }
+
+                    var items = await store.ListWorkItemsAsync(
+                        name,
+                        status,
+                        ParseBoundedIntOption(args[1..], "--limit", 100, 1, 1000),
+                        cancellationToken).ConfigureAwait(false);
+                    if (HasFlag(args[1..], "--json"))
+                    {
+                        AnsiConsole.WriteLine(JsonSerializer.Serialize(items, JsonOptions));
+                        return 0;
+                    }
+
+                    var table = new Table().Border(TableBorder.Rounded)
+                        .Title("[bold aqua]Desk queue[/]")
+                        .AddColumn("ID").AddColumn("Pane").AddColumn("Cost").AddColumn("State").AddColumn("Created");
+                    foreach (var item in items)
+                    {
+                        table.AddRow(
+                            item.Id.ToString("N")[..8],
+                            Markup.Escape(item.PaneName),
+                            item.Expensive ? "[yellow]expensive[/]" : "normal",
+                            Markup.Escape(item.Status.ToString()),
+                            Markup.Escape(item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)));
+                    }
+
+                    AnsiConsole.Write(table);
+                    return 0;
+                }
+
+            case "dispatch":
+                {
+                    var name = GetOption(args[1..], "--name");
+                    var snapshot = await DeskRuntime.ReconcileAsync(
+                        psmux, store, applyStyles: true, captureFailures: true, cancellationToken).ConfigureAwait(false);
+                    var result = await DeskQueueDispatcher.DispatchAsync(
+                        psmux, store, snapshot, name, cancellationToken).ConfigureAwait(false);
+                    PrintDispatchResult(result);
+                    return result.Failed == 0 ? 0 : 2;
+                }
+
+            case "cancel":
+                {
+                    var rawId = RequireOption(args[1..], "--id");
+                    if (!Guid.TryParse(rawId, out var id))
+                    {
+                        throw new ArgumentException($"'{rawId}' is not a valid work item id.");
+                    }
+
+                    var item = await store.TransitionWorkItemAsync(
+                        id,
+                        DeskWorkItemStatus.Cancelled,
+                        "Cancelled by operator.",
+                        cancellationToken).ConfigureAwait(false);
+                    AnsiConsole.MarkupLine($"[yellow]Cancelled:[/] {item.Id:D}");
+                    return 0;
+                }
+
+            default:
+                return UnknownCommand($"desk queue {args[0]}");
+        }
+    }
+
+    private static async Task<int> SendTestNotificationAsync(
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        var title = GetOption(args, "--title") ?? "Flyt Desk";
+        var message = GetOption(args, "--text") ?? "Native notification delivery is operational.";
+        Console.Write($"\u001b]9;{SanitizeNotification(message)}\u001b\\\a");
+        var result = await new DesktopNotifier(CommandExecutor)
+            .NotifyAsync(title, message, cancellationToken).ConfigureAwait(false);
+        if (!result.NativeAttempted)
+        {
+            AnsiConsole.MarkupLine("[yellow]Native toast skipped:[/] current host is not Windows; terminal fallback emitted.");
+            return 2;
+        }
+
+        if (!result.NativeDelivered)
+        {
+            AnsiConsole.MarkupLine($"[red]Native toast failed:[/] {Markup.Escape(result.Error ?? "Unknown failure")}");
+            return 2;
+        }
+
+        AnsiConsole.MarkupLine("[green]Native Windows notification delivered.[/]");
+        return 0;
+    }
+
+    private static async Task<int> ShowDeskHistoryAsync(
+        FlytStateStore store,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        var events = await store.ListDeskEventsAsync(
+            GetOption(args, "--name"),
+            GetOption(args, "--search"),
+            ParseBoundedIntOption(args, "--limit", 100, 1, 1000),
+            cancellationToken).ConfigureAwait(false);
+        if (HasFlag(args, "--json"))
+        {
+            AnsiConsole.WriteLine(JsonSerializer.Serialize(events, JsonOptions));
+            return 0;
+        }
+
+        var table = new Table().Border(TableBorder.Rounded)
+            .Title("[bold aqua]Desk history[/]")
+            .AddColumn("Time").AddColumn("Desk").AddColumn("Event").AddColumn("Pane").AddColumn("Detail");
+        foreach (var deskEvent in events)
+        {
+            table.AddRow(
+                Markup.Escape(deskEvent.OccurredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)),
+                Markup.Escape(deskEvent.DeskName),
+                Markup.Escape(deskEvent.EventType),
+                Markup.Escape(deskEvent.PaneName ?? "-"),
+                Markup.Escape(deskEvent.Detail));
         }
 
         AnsiConsole.Write(table);
@@ -335,6 +560,14 @@ internal static partial class Program
             JsonSerializer.Serialize(handoff, JsonOptions) + Environment.NewLine,
             cancellationToken).ConfigureAwait(false);
 
+        await store.AddDeskEventAsync(
+            desk.Id,
+            "handoff.created",
+            to,
+            $"Handoff {handoff.Id:D} created from {from} to {to}: {goal}",
+            timestamp,
+            cancellationToken).ConfigureAwait(false);
+
         if (HasFlag(args, "--send"))
         {
             var message = $"Structured handoff from {from}. Goal: {goal}. Requested action: {requestedAction}. "
@@ -407,9 +640,12 @@ internal static partial class Program
         }))
             .ToDictionary(value => value.Key, value => value.Status, StringComparer.OrdinalIgnoreCase);
 
-    private static void NotifyTransitions(
+    private static async Task NotifyTransitionsAsync(
         IReadOnlyDictionary<string, DeskPaneStatus> previous,
-        DeskRuntimeSnapshot current)
+        DeskRuntimeSnapshot current,
+        DesktopNotifier notifier,
+        FlytStateStore store,
+        CancellationToken cancellationToken)
     {
         foreach (var desk in current.Desks)
         {
@@ -424,7 +660,35 @@ internal static partial class Program
 
                 var message = $"Flyt: {desk.SessionName}/{pane.Name} {StateLabel(pane.Status)}";
                 Console.Write($"\u001b]9;{SanitizeNotification(message)}\u001b\\\a");
+                var result = await notifier.NotifyAsync(
+                    "Flyt Desk",
+                    message,
+                    cancellationToken).ConfigureAwait(false);
+                if (result.NativeAttempted && !result.NativeDelivered)
+                {
+                    await store.AddDeskEventAsync(
+                        desk.Id,
+                        "notification.failed",
+                        pane.Name,
+                        result.Error ?? "Native notification delivery failed.",
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
             }
+        }
+    }
+
+    private static void PrintDispatchResult(DeskDispatchResult result)
+    {
+        if (result.Dispatched + result.Completed + result.Failed > 0 || result.Remaining > 0)
+        {
+            AnsiConsole.MarkupLine(
+                $"[aqua]Queue:[/] dispatched {result.Dispatched}, completed {result.Completed}, "
+                + $"failed {result.Failed}, waiting {result.Remaining}.");
+        }
+
+        foreach (var warning in result.Warnings)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Queue warning:[/] {Markup.Escape(warning)}");
         }
     }
 
@@ -460,4 +724,27 @@ internal static partial class Program
 
     private static string[] SplitOptional(string[] args, string option) =>
         GetOption(args, option) is { } value ? SplitListOption(value) : [];
+
+    private static int ParseBoundedIntOption(
+        string[] args,
+        string option,
+        int defaultValue,
+        int minimum,
+        int maximum)
+    {
+        var raw = GetOption(args, option);
+        if (raw is null)
+        {
+            return defaultValue;
+        }
+
+        if (!int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
+            || value < minimum
+            || value > maximum)
+        {
+            throw new ArgumentException($"{option} must be between {minimum} and {maximum}.");
+        }
+
+        return value;
+    }
 }

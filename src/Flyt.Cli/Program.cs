@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Flyt.Core;
 using Flyt.Persistence;
 using Flyt.Providers;
@@ -12,7 +13,11 @@ namespace Flyt.Cli;
 internal static partial class Program
 {
     private static readonly SystemCommandExecutor CommandExecutor = new();
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     public static async Task<int> Main(string[] args)
     {
@@ -245,8 +250,12 @@ internal static partial class Program
                 [aqua]flyt desk status [[--json]][/]         Reconcile registered desks
                 [aqua]flyt desk watch [[--notify]][/]        Live colour-coded cockpit
                 [aqua]flyt desk send [[selectors]][/]        Send literal text to selected panes
+                [aqua]flyt desk queue add|list|dispatch[/]   Gate queued work by resource policy
                 [aqua]flyt desk recover --name N[/]          Preview or apply recovery
+                [aqua]flyt desk reopen --name N[/]           Reopen a stopped or missing Desk
+                [aqua]flyt desk history [[--search TEXT]][/] Search durable Desk history
                 [aqua]flyt desk handoff [[options]][/]       Create a structured handoff
+                [aqua]flyt desk notify [[--text TEXT]][/]    Test native Windows notifications
                 [aqua]flyt desk attach --name NAME[/]        Take over a workspace
                 [aqua]flyt desk focus --name N --pane P[/]   Focus a registered pane
                 [aqua]flyt desk restart-pane --name N --pane P[/] Restart a pane
@@ -272,8 +281,13 @@ internal static partial class Program
         AnsiConsole.MarkupLine("[aqua]flyt desk focus[/] --name NAME [[--pane PANE|--next]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk restart-pane|logs[/] --name NAME --pane PANE");
         AnsiConsole.MarkupLine("[aqua]flyt desk send[/] --name N --text TEXT --pane|--role|--tag|--state|--all");
+        AnsiConsole.MarkupLine("[aqua]flyt desk queue add[/] --name N --pane P --text TEXT [[--expensive]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk queue list|dispatch|cancel[/] [[options]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk recover[/] --name NAME [[--apply]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk reopen[/] --name NAME");
         AnsiConsole.MarkupLine("[aqua]flyt desk failures[/] --name NAME [[--json]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk history[/] [[--name NAME]] [[--search TEXT]] [[--json]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk notify[/] [[--title TEXT]] [[--text TEXT]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk template init[/] [[--path PATH]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk handoff[/] --name N --from P --to P --goal G --action A [[--send]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk stop[/] --name NAME");
