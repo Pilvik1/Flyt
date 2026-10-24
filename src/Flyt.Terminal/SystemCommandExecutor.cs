@@ -18,7 +18,15 @@ public sealed class SystemCommandExecutor : ICommandExecutor
             ?? throw new InvalidOperationException($"Failed to start {invocation.FileName}.");
         var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var error = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await KillProcessTreeAsync(process).ConfigureAwait(false);
+            throw;
+        }
 
         return new CommandResult(
             process.ExitCode,
@@ -33,8 +41,28 @@ public sealed class SystemCommandExecutor : ICommandExecutor
         var startInfo = CreateStartInfo(invocation);
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Failed to start {invocation.FileName}.");
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await KillProcessTreeAsync(process).ConfigureAwait(false);
+            throw;
+        }
+
         return process.ExitCode;
+    }
+
+    private static async Task KillProcessTreeAsync(Process process)
+    {
+        if (process.HasExited)
+        {
+            return;
+        }
+
+        process.Kill(entireProcessTree: true);
+        await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private static ProcessStartInfo CreateStartInfo(CommandInvocation invocation)
@@ -53,4 +81,3 @@ public sealed class SystemCommandExecutor : ICommandExecutor
         return startInfo;
     }
 }
-

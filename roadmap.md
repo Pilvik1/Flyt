@@ -16,24 +16,26 @@
 - [x] Architecture, roadmap, policy, and decision records.
 - [x] Core state machine and SQLite event ledger.
 - [x] Initial provider diagnostics and psmux command planning.
-- [ ] Green Windows CI on the initial commit.
+- [x] Green Windows and Ubuntu CI on the foundation.
 
 ## Phase 2 — Desk MVP
 
 - [ ] Native Windows psmux execution.
-- [ ] Six-session layouts.
+- [x] Deterministic one-to-six-session layouts.
 - [ ] Central live dashboard.
-- [ ] Focus, attach, restart, stop, and clean shutdown.
-- [ ] Durable session registry and controller restart re-adoption.
+- [x] Focus, attach, pane restart, logs, stop, and child-tree cancellation.
+- [x] Durable Desk/pane registry and live-state reconciliation.
+- [ ] Prove restart re-adoption on the target Windows host.
 
 ## Phase 3 — Mission foundation
 
 - [ ] Structured brief and task graph schemas.
-- [ ] Briefing interview and plan approval.
+- [x] Persisted acceptance plan and enforced operator approval.
 - [ ] Claude structured adapter.
 - [ ] Codex app-server adapter.
 - [ ] Git worktree manager and ownership rules.
-- [ ] Pause/resume/cancel/recovery.
+- [x] Pause/resume/cancel with exact prior-state recovery.
+- [ ] Recovery of interrupted provider execution.
 
 ## Phase 4 — quality loop
 
@@ -50,4 +52,3 @@
 - [ ] Redaction and log retention.
 - [ ] Polished terminal theme.
 - [ ] Five real missions across two weeks with at least 50% fewer interventions.
-

@@ -29,7 +29,7 @@ public static class PsmuxLayoutPlanner
                 sessions[0].WorkingDirectory,
             ]));
         commands.Add(TitleCommand(executable, "$pane0", sessions[0].Name));
-        commands.Add(SendCommand(executable, "$pane0", ProviderCommand(sessions[0].Provider)));
+        commands.Add(SendCommand(executable, "$pane0", sessions[0].LaunchCommand));
 
         for (var index = 1; index < sessions.Count; index++)
         {
@@ -47,7 +47,7 @@ public static class PsmuxLayoutPlanner
                     sessions[index].WorkingDirectory,
                 ]));
             commands.Add(TitleCommand(executable, $"$pane{index}", sessions[index].Name));
-            commands.Add(SendCommand(executable, $"$pane{index}", ProviderCommand(sessions[index].Provider)));
+            commands.Add(SendCommand(executable, $"$pane{index}", sessions[index].LaunchCommand));
         }
 
         commands.Add(new CommandInvocation(
@@ -90,18 +90,9 @@ public static class PsmuxLayoutPlanner
         }
     }
 
-    internal static string ProviderCommand(AgentProvider provider) => provider switch
-    {
-        AgentProvider.Claude => "claude",
-        AgentProvider.Codex => "codex",
-        AgentProvider.Shell => "pwsh",
-        _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unsupported provider."),
-    };
-
     internal static CommandInvocation TitleCommand(string executable, string paneId, string title) =>
         new(executable, ["select-pane", "-t", paneId, "-T", title]);
 
     internal static CommandInvocation SendCommand(string executable, string paneId, string command) =>
         new(executable, ["send-keys", "-t", paneId, "--", command, "Enter"]);
 }
-

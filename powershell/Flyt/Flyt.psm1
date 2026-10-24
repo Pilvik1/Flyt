@@ -78,6 +78,60 @@ function Enter-FlytDesk {
     Invoke-Flyt desk attach --name $Name
 }
 
+function Get-FlytDesk {
+    [CmdletBinding()]
+    param(
+        [switch] $Json
+    )
+
+    $arguments = @('desk', 'status')
+    if ($Json) {
+        $arguments += '--json'
+    }
+
+    Invoke-Flyt @arguments
+}
+
+function Set-FlytDeskPaneFocus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [string] $Pane
+    )
+
+    Invoke-Flyt desk focus --name $Name --pane $Pane
+}
+
+function Restart-FlytDeskPane {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [string] $Pane
+    )
+
+    if ($PSCmdlet.ShouldProcess("$Name/$Pane", 'Restart Flyt desk pane')) {
+        Invoke-Flyt desk restart-pane --name $Name --pane $Pane
+    }
+}
+
+function Get-FlytDeskPaneLog {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [string] $Pane,
+        [ValidateRange(1, 10000)]
+        [int] $Lines = 200
+    )
+
+    Invoke-Flyt desk logs --name $Name --pane $Pane --lines $Lines
+}
+
 function Stop-FlytDesk {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -95,10 +149,32 @@ function New-FlytMission {
     param(
         [Parameter(Mandatory)]
         [string] $Goal,
-        [string] $Path = (Get-Location).Path
+        [string] $Path = (Get-Location).Path,
+        [ValidateSet('manual', 'bounded', 'auto')]
+        [string] $Profile = 'bounded'
     )
 
-    Invoke-Flyt mission create --goal $Goal --path (Resolve-Path -LiteralPath $Path).Path
+    Invoke-Flyt mission create --goal $Goal --path (Resolve-Path -LiteralPath $Path).Path --profile $Profile
+}
+
+function Set-FlytMissionPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [guid] $Id,
+        [Parameter(Mandatory)]
+        [string[]] $AcceptanceCriterion,
+        [Parameter(Mandatory)]
+        [string[]] $Step,
+        [Parameter(Mandatory)]
+        [string] $VerificationCommand
+    )
+
+    Invoke-Flyt mission plan `
+        --id ($Id.ToString('D')) `
+        --acceptance ($AcceptanceCriterion -join '|') `
+        --steps ($Step -join '|') `
+        --verify $VerificationCommand
 }
 
 function Get-FlytMission {
@@ -112,7 +188,7 @@ function Get-FlytMission {
         return
     }
 
-    Invoke-Flyt mission show --id $Id.ToString('D')
+        Invoke-Flyt mission show --id ($Id.ToString('D'))
 }
 
 function Approve-FlytMission {
@@ -123,7 +199,34 @@ function Approve-FlytMission {
     )
 
     if ($PSCmdlet.ShouldProcess($Id, 'Approve Flyt mission plan')) {
-        Invoke-Flyt mission approve --id $Id.ToString('D')
+        Invoke-Flyt mission approve --id ($Id.ToString('D'))
+    }
+}
+
+function Suspend-FlytMission {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([Parameter(Mandatory)][guid] $Id)
+
+    if ($PSCmdlet.ShouldProcess($Id, 'Pause Flyt mission')) {
+        Invoke-Flyt mission pause --id ($Id.ToString('D'))
+    }
+}
+
+function Resume-FlytMission {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([Parameter(Mandatory)][guid] $Id)
+
+    if ($PSCmdlet.ShouldProcess($Id, 'Resume Flyt mission')) {
+        Invoke-Flyt mission resume --id ($Id.ToString('D'))
+    }
+}
+
+function Stop-FlytMission {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([Parameter(Mandatory)][guid] $Id)
+
+    if ($PSCmdlet.ShouldProcess($Id, 'Cancel Flyt mission')) {
+        Invoke-Flyt mission cancel --id ($Id.ToString('D'))
     }
 }
 
@@ -132,8 +235,16 @@ Export-ModuleMember -Function @(
     'Test-FlytEnvironment',
     'Start-FlytDesk',
     'Enter-FlytDesk',
+    'Get-FlytDesk',
+    'Set-FlytDeskPaneFocus',
+    'Restart-FlytDeskPane',
+    'Get-FlytDeskPaneLog',
     'Stop-FlytDesk',
     'New-FlytMission',
+    'Set-FlytMissionPlan',
     'Get-FlytMission',
-    'Approve-FlytMission'
+    'Approve-FlytMission',
+    'Suspend-FlytMission',
+    'Resume-FlytMission',
+    'Stop-FlytMission'
 )

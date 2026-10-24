@@ -10,7 +10,7 @@ public sealed class MissionTests
         var mission = Mission.Create("Build the thing", Environment.CurrentDirectory);
 
         Assert.Equal(MissionState.Briefing, mission.State);
-        Assert.Equal("Balanced", mission.Profile);
+        Assert.Equal("Bounded", mission.Profile);
         Assert.Equal("Build the thing", mission.Goal);
         Assert.True(Path.IsPathFullyQualified(mission.WorkspacePath));
     }
@@ -54,5 +54,21 @@ public sealed class MissionTests
 
         Assert.False(mission.CanTransitionTo(MissionState.Executing));
     }
-}
 
+    [Fact]
+    public void Pause_ResumesOnlyToRecordedPriorState()
+    {
+        var paused = Mission.Create("Build", Environment.CurrentDirectory)
+            .TransitionTo(MissionState.PlanApproval)
+            .TransitionTo(MissionState.Planning)
+            .TransitionTo(MissionState.Executing)
+            .TransitionTo(MissionState.Paused);
+
+        Assert.Equal(MissionState.Executing, paused.ResumeState);
+        Assert.True(paused.CanTransitionTo(MissionState.Executing));
+        Assert.False(paused.CanTransitionTo(MissionState.Verifying));
+
+        var resumed = paused.TransitionTo(MissionState.Executing);
+        Assert.Null(resumed.ResumeState);
+    }
+}

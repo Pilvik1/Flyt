@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Text.Json;
 using Flyt.Core;
 using Flyt.Persistence;
 using Flyt.Providers;
@@ -8,9 +9,10 @@ using Spectre.Console;
 
 namespace Flyt.Cli;
 
-internal static class Program
+internal static partial class Program
 {
     private static readonly SystemCommandExecutor CommandExecutor = new();
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public static async Task<int> Main(string[] args)
     {
@@ -108,239 +110,6 @@ internal static class Program
             : 2;
     }
 
-    private static async Task<int> RunDeskAsync(string[] args, CancellationToken cancellationToken)
-    {
-        if (args.Length == 0 || IsHelp(args[0]))
-        {
-            PrintDeskHelp();
-            return 0;
-        }
-
-        var psmux = new PsmuxClient(CommandExecutor);
-        return args[0].ToLowerInvariant() switch
-        {
-            "start" => await StartDeskAsync(psmux, args[1..], cancellationToken).ConfigureAwait(false),
-            "status" => await ShowDeskStatusAsync(psmux, cancellationToken).ConfigureAwait(false),
-            "attach" => await AttachDeskAsync(psmux, args[1..], cancellationToken).ConfigureAwait(false),
-            "stop" => await StopDeskAsync(psmux, args[1..], cancellationToken).ConfigureAwait(false),
-            _ => UnknownCommand($"desk {args[0]}"),
-        };
-    }
-
-    private static async Task<int> StartDeskAsync(
-        PsmuxClient psmux,
-        string[] args,
-        CancellationToken cancellationToken)
-    {
-        var path = Path.GetFullPath(GetOption(args, "--path") ?? Environment.CurrentDirectory);
-        if (!Directory.Exists(path))
-        {
-            throw new DirectoryNotFoundException(path);
-        }
-
-        var name = GetOption(args, "--name") ?? $"flyt-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
-        var sessionValue = GetOption(args, "--sessions") ?? "claude:planner,claude:builder,codex:reviewer";
-        var sessions = ParseSessionSpecs(sessionValue, path);
-        var dryRun = HasFlag(args, "--dry-run");
-
-        if (dryRun)
-        {
-            var preview = PsmuxLayoutPlanner.BuildPreview("psmux", name, sessions);
-            var table = new Table()
-                .Border(TableBorder.Minimal)
-                .Title("[bold aqua]psmux command plan[/]")
-                .AddColumn("#")
-                .AddColumn("Command");
-            for (var index = 0; index < preview.Count; index++)
-            {
-                table.AddRow(
-                    (index + 1).ToString(CultureInfo.InvariantCulture),
-                    Markup.Escape(preview[index].ToString()));
-            }
-
-            AnsiConsole.Write(table);
-            return 0;
-        }
-
-        var probe = await psmux.ProbeAsync(cancellationToken).ConfigureAwait(false);
-        if (!probe.IsSuccess)
-        {
-            throw new InvalidOperationException(
-                $"psmux is unavailable: {FirstNonEmpty(probe.StandardError, probe.StandardOutput)}");
-        }
-
-        var sessionName = await psmux.StartDeskAsync(name, sessions, cancellationToken).ConfigureAwait(false);
-        AnsiConsole.MarkupLine($"[green]Desk started:[/] {Markup.Escape(sessionName)}");
-        AnsiConsole.MarkupLine($"Attach with: [aqua]flyt desk attach --name {Markup.Escape(sessionName)}[/]");
-        return 0;
-    }
-
-    private static async Task<int> ShowDeskStatusAsync(
-        PsmuxClient psmux,
-        CancellationToken cancellationToken)
-    {
-        var sessions = await psmux.ListSessionsAsync(cancellationToken).ConfigureAwait(false);
-        if (sessions.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[grey]No psmux sessions found.[/]");
-            return 0;
-        }
-
-        var table = new Table().Border(TableBorder.Rounded).AddColumn("psmux session");
-        foreach (var session in sessions)
-        {
-            table.AddRow(Markup.Escape(session));
-        }
-
-        AnsiConsole.Write(table);
-        return 0;
-    }
-
-    private static async Task<int> AttachDeskAsync(
-        PsmuxClient psmux,
-        string[] args,
-        CancellationToken cancellationToken)
-    {
-        var name = RequireOption(args, "--name");
-        return await psmux.AttachAsync(name, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<int> StopDeskAsync(
-        PsmuxClient psmux,
-        string[] args,
-        CancellationToken cancellationToken)
-    {
-        var name = RequireOption(args, "--name");
-        await psmux.StopAsync(name, cancellationToken).ConfigureAwait(false);
-        AnsiConsole.MarkupLine($"[green]Desk stopped:[/] {Markup.Escape(name)}");
-        return 0;
-    }
-
-    private static async Task<int> RunMissionAsync(string[] args, CancellationToken cancellationToken)
-    {
-        if (args.Length == 0 || IsHelp(args[0]))
-        {
-            PrintMissionHelp();
-            return 0;
-        }
-
-        var store = CreateStateStore();
-        await store.InitializeAsync(cancellationToken).ConfigureAwait(false);
-
-        return args[0].ToLowerInvariant() switch
-        {
-            "create" => await CreateMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
-            "list" => await ListMissionsAsync(store, cancellationToken).ConfigureAwait(false),
-            "show" => await ShowMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
-            "approve" => await ApproveMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
-            _ => UnknownCommand($"mission {args[0]}"),
-        };
-    }
-
-    private static async Task<int> CreateMissionAsync(
-        FlytStateStore store,
-        string[] args,
-        CancellationToken cancellationToken)
-    {
-        var goal = RequireOption(args, "--goal");
-        var path = Path.GetFullPath(GetOption(args, "--path") ?? Environment.CurrentDirectory);
-        if (!Directory.Exists(path))
-        {
-            throw new DirectoryNotFoundException(path);
-        }
-
-        var gitCheck = await ProbeCommandAsync(
-            "git",
-            ["-C", path, "rev-parse", "--show-toplevel"],
-            cancellationToken).ConfigureAwait(false);
-        if (!gitCheck.IsSuccess)
-        {
-            throw new InvalidOperationException(
-                "V1 write missions require a git repository. Desk mode still supports ordinary folders.");
-        }
-
-        var mission = Mission.Create(goal, path);
-        await store.CreateMissionAsync(mission, cancellationToken).ConfigureAwait(false);
-        mission = await store.TransitionMissionAsync(
-            mission.Id,
-            MissionState.PlanApproval,
-            "Brief captured; waiting for operator plan approval.",
-            cancellationToken).ConfigureAwait(false);
-
-        PrintMission(mission);
-        AnsiConsole.MarkupLine(
-            $"Approve with: [aqua]flyt mission approve --id {mission.Id:D}[/]");
-        return 0;
-    }
-
-    private static async Task<int> ListMissionsAsync(
-        FlytStateStore store,
-        CancellationToken cancellationToken)
-    {
-        var missions = await store.ListMissionsAsync(cancellationToken).ConfigureAwait(false);
-        var table = new Table()
-            .Border(TableBorder.Rounded)
-            .AddColumn("Id")
-            .AddColumn("State")
-            .AddColumn("Goal")
-            .AddColumn("Updated");
-
-        foreach (var mission in missions)
-        {
-            table.AddRow(
-                mission.Id.ToString("D")[..8],
-                Markup.Escape(mission.State.ToString()),
-                Markup.Escape(mission.Goal),
-                mission.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
-        }
-
-        AnsiConsole.Write(table);
-        return 0;
-    }
-
-    private static async Task<int> ShowMissionAsync(
-        FlytStateStore store,
-        string[] args,
-        CancellationToken cancellationToken)
-    {
-        var id = ParseMissionId(RequireOption(args, "--id"));
-        var mission = await store.GetMissionAsync(id, cancellationToken).ConfigureAwait(false)
-            ?? throw new KeyNotFoundException($"Mission {id:D} was not found.");
-        PrintMission(mission);
-
-        var events = await store.GetEventsAsync(id, cancellationToken).ConfigureAwait(false);
-        var table = new Table()
-            .Border(TableBorder.Minimal)
-            .AddColumn("Seq")
-            .AddColumn("Transition")
-            .AddColumn("Detail");
-        foreach (var missionEvent in events)
-        {
-            table.AddRow(
-                missionEvent.Sequence.ToString(CultureInfo.InvariantCulture),
-                Markup.Escape($"{missionEvent.FromState?.ToString() ?? "-"} -> {missionEvent.ToState}"),
-                Markup.Escape(missionEvent.Detail));
-        }
-
-        AnsiConsole.Write(table);
-        return 0;
-    }
-
-    private static async Task<int> ApproveMissionAsync(
-        FlytStateStore store,
-        string[] args,
-        CancellationToken cancellationToken)
-    {
-        var id = ParseMissionId(RequireOption(args, "--id"));
-        var mission = await store.TransitionMissionAsync(
-            id,
-            MissionState.Planning,
-            "Operator approved the mission plan.",
-            cancellationToken).ConfigureAwait(false);
-        PrintMission(mission);
-        return 0;
-    }
-
     private static FlytStateStore CreateStateStore() => new(StatePaths.DatabasePath);
 
     private static async Task<CommandResult> ProbeCommandAsync(
@@ -360,7 +129,10 @@ internal static class Program
         }
     }
 
-    private static List<AgentSessionSpec> ParseSessionSpecs(string value, string workingDirectory)
+    private static List<AgentSessionSpec> ParseSessionSpecs(
+        string value,
+        string workingDirectory,
+        ProviderRegistry providers)
     {
         var result = new List<AgentSessionSpec>();
         foreach (var item in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -379,7 +151,11 @@ internal static class Program
                 "shell" or "pwsh" => AgentProvider.Shell,
                 _ => throw new ArgumentException($"Unsupported provider '{parts[0]}'."),
             };
-            result.Add(AgentSessionSpec.Create(provider, parts[1], workingDirectory));
+            result.Add(AgentSessionSpec.Create(
+                provider,
+                parts[1],
+                workingDirectory,
+                providers.Get(provider).InteractiveCommand));
         }
 
         return result;
@@ -390,6 +166,8 @@ internal static class Program
         var grid = new Grid().AddColumn().AddColumn();
         grid.AddRow("[grey]Id[/]", Markup.Escape(mission.Id.ToString("D")));
         grid.AddRow("[grey]State[/]", Markup.Escape(mission.State.ToString()));
+        grid.AddRow("[grey]Resume state[/]", Markup.Escape(mission.ResumeState?.ToString() ?? "-"));
+        grid.AddRow("[grey]Version[/]", mission.Version.ToString(CultureInfo.InvariantCulture));
         grid.AddRow("[grey]Profile[/]", Markup.Escape(mission.Profile));
         grid.AddRow("[grey]Workspace[/]", Markup.Escape(mission.WorkspacePath));
         grid.AddRow("[grey]Goal[/]", Markup.Escape(mission.Goal));
@@ -437,6 +215,9 @@ internal static class Program
     private static bool HasFlag(string[] args, string flag) =>
         args.Any(value => string.Equals(value, flag, StringComparison.OrdinalIgnoreCase));
 
+    private static string[] SplitListOption(string value) =>
+        value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     private static bool IsHelp(string value) => value is "help" or "--help" or "-h";
 
     private static int PrintVersion()
@@ -460,13 +241,18 @@ internal static class Program
                 """
                 [aqua]flyt doctor[/]                         Check the local toolchain
                 [aqua]flyt desk start [[options]][/]         Create a psmux workspace
-                [aqua]flyt desk status[/]                    List psmux sessions
+                [aqua]flyt desk status [[--json]][/]         Reconcile registered desks
                 [aqua]flyt desk attach --name NAME[/]        Take over a workspace
+                [aqua]flyt desk focus --name N --pane P[/]   Focus a registered pane
+                [aqua]flyt desk restart-pane --name N --pane P[/] Restart a pane
+                [aqua]flyt desk logs --name N --pane P[/]    Capture recent pane output
                 [aqua]flyt desk stop --name NAME[/]          Stop a workspace
                 [aqua]flyt mission create [[options]][/]     Create a durable mission
+                [aqua]flyt mission plan [[options]][/]       Persist acceptance plan
                 [aqua]flyt mission list[/]                   List missions
                 [aqua]flyt mission show --id ID[/]           Show state and events
                 [aqua]flyt mission approve --id ID[/]        Approve the plan
+                [aqua]flyt mission pause|resume|cancel[/]     Control mission lifecycle
                 """)
                 .Header("[bold]FlytV1[/]")
                 .RoundedBorder());
@@ -477,14 +263,21 @@ internal static class Program
         AnsiConsole.MarkupLine(
             "[aqua]flyt desk start[/] [[--name NAME]] [[--path PATH]] "
             + "[[--sessions claude:planner,codex:reviewer]] [[--dry-run]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk status[/] [[--json]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk focus|restart-pane|logs[/] --name NAME --pane PANE");
+        AnsiConsole.MarkupLine("[aqua]flyt desk stop[/] --name NAME");
     }
 
     private static void PrintMissionHelp()
     {
-        AnsiConsole.MarkupLine("[aqua]flyt mission create[/] --goal TEXT [[--path PATH]]");
+        AnsiConsole.MarkupLine(
+            "[aqua]flyt mission create[/] --goal TEXT [[--path PATH]] [[--profile manual|bounded|auto]]");
+        AnsiConsole.MarkupLine(
+            "[aqua]flyt mission plan[/] --id ID --acceptance \"A|B\" --steps \"build|review|verify\" --verify COMMAND");
         AnsiConsole.MarkupLine("[aqua]flyt mission list[/]");
         AnsiConsole.MarkupLine("[aqua]flyt mission show[/] --id ID");
         AnsiConsole.MarkupLine("[aqua]flyt mission approve[/] --id ID");
+        AnsiConsole.MarkupLine("[aqua]flyt mission pause|resume|cancel[/] --id ID");
     }
 }
 
