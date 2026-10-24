@@ -22,10 +22,11 @@
 
 - [ ] Native Windows psmux execution.
 - [x] Deterministic one-to-six-session layouts.
-- [ ] Central live dashboard with role labels, pane state, and attention cues.
+- [x] Central live dashboard with role labels, pane state, and attention cues.
 - [x] Focus, attach, pane restart, logs, stop, and child-tree cancellation.
 - [x] Durable Desk/pane registry and live-state reconciliation.
-- [ ] Directory-aware session templates and operator broadcast.
+- [x] Directory-aware session templates and targeted operator broadcast.
+- [x] Durable failure receipts and structured Desk handoff bundles.
 - [ ] Prove restart re-adoption on the target Windows host.
 
 ## Phase 3 — Mission foundation
@@ -37,7 +38,7 @@
 - [ ] Git worktree manager and ownership rules.
 - [ ] Hash-bound approval for repository setup and teardown hooks.
 - [x] Pause/resume/cancel with exact prior-state recovery.
-- [ ] Recovery of interrupted provider execution.
+- [ ] Recovery of interrupted Mission provider execution (Desk recovery is shipped).
 
 ## Phase 4 — quality loop
 
@@ -52,5 +53,5 @@
 - [x] Checksum-verified Windows installer and private release/update path.
 - [ ] Failure-injection tests.
 - [ ] Redaction and log retention.
-- [ ] Polished terminal theme with stable role colors and task labels.
+- [x] Polished terminal theme with stable role colors and task labels.
 - [ ] Five real missions across two weeks with at least 50% fewer interventions.

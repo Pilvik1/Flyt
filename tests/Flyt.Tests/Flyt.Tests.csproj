@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Flyt.Cli\Flyt.Cli.csproj" />
     <ProjectReference Include="..\..\src\Flyt.Core\Flyt.Core.csproj" />
     <ProjectReference Include="..\..\src\Flyt.Persistence\Flyt.Persistence.csproj" />
     <ProjectReference Include="..\..\src\Flyt.Providers\Flyt.Providers.csproj" />

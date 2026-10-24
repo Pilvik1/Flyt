@@ -21,7 +21,7 @@ public sealed class PsmuxClientTests
 
         Assert.Equal("my-desk", started.SessionName);
         Assert.Equal(["%1", "%2", "%3"], started.Panes.Select(pane => pane.PaneId));
-        Assert.Equal(10, executor.Invocations.Count);
+        Assert.Equal(16, executor.Invocations.Count);
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%1"));
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%2"));
         Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%3"));
@@ -64,7 +64,8 @@ public sealed class PsmuxClientTests
     {
         var executor = new FakeCommandExecutor
         {
-            NextOutput = "%9\u001fbuilder\u001fclaude\u001f1\n",
+            NextOutput = "%9\u001fbuilder | 🟡 NEEDS INPUT | builder | Implement\u001fclaude\u001f1"
+                + "\u001f123\u001f0\u001f\u001fblocked\u001f0\n",
         };
         var client = new PsmuxClient(executor);
 
@@ -72,9 +73,49 @@ public sealed class PsmuxClientTests
 
         var pane = Assert.Single(panes);
         Assert.Equal("%9", pane.PaneId);
-        Assert.Equal("builder", pane.Title);
+        Assert.Equal("builder | 🟡 NEEDS INPUT | builder | Implement", pane.Title);
+        Assert.Equal("builder", pane.Name);
         Assert.Equal("claude", pane.CurrentCommand);
         Assert.True(pane.IsActive);
+        Assert.Equal(123, pane.ProcessId);
+        Assert.Equal("blocked", pane.ProgramState);
+    }
+
+    [Fact]
+    public async Task SendText_UsesBase64PasteBoundaryAndOptionalSubmit()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(executor);
+
+        await client.SendTextAsync("%7", "line one\nline; two", submit: true);
+
+        Assert.Equal(2, executor.Invocations.Count);
+        var paste = executor.Invocations[0];
+        Assert.Equal("send-paste", paste.Arguments[0]);
+        Assert.Equal("line one\nline; two", System.Text.Encoding.UTF8.GetString(
+            Convert.FromBase64String(paste.Arguments[^1])));
+        Assert.Equal("send-keys", executor.Invocations[1].Arguments[0]);
+    }
+
+    [Theory]
+    [InlineData("working", false, null, false, DeskPaneStatus.Working)]
+    [InlineData("blocked", false, null, false, DeskPaneStatus.NeedsInput)]
+    [InlineData("done", false, null, false, DeskPaneStatus.Done)]
+    [InlineData("done", true, null, false, DeskPaneStatus.Idle)]
+    [InlineData("error", false, null, false, DeskPaneStatus.Failed)]
+    [InlineData("", false, 42, true, DeskPaneStatus.Failed)]
+    [InlineData("", false, 0, true, DeskPaneStatus.Exited)]
+    public void StatusMapper_MapsStructuredAndProcessStates(
+        string programState,
+        bool seen,
+        int? exitCode,
+        bool dead,
+        DeskPaneStatus expected)
+    {
+        var snapshot = new PsmuxPaneSnapshot(
+            "%1", "builder", "builder", "claude", false, 123, dead, exitCode, programState, seen);
+
+        Assert.Equal(expected, PsmuxStatusMapper.Map(snapshot));
     }
 
     private static AgentSessionSpec Session(

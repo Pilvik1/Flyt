@@ -18,6 +18,10 @@ Foundation slice under active development:
 - transactional psmux startup with rollback on partial failure;
 - SQLite-backed Desk registry, mission plans, approvals, and event state;
 - Desk status reconciliation plus pane focus, restart, and log capture;
+- colour-coded live Desk cockpit with role, task, state, resource, and tag views;
+- repo-local Desk templates and resumable provider identities;
+- targeted multiline send, recovery previews, and durable failure receipts;
+- structured builder/reviewer/verifier handoff bundles;
 - evidence-bearing mission state machine;
 - Manual, Bounded, and Auto policy profiles;
 - initial tests and Windows CI.
@@ -48,7 +52,7 @@ install it with Flyt, download the installer first and pass `-InstallPsmux`:
 $installer = Join-Path $env:TEMP 'install-flyt.ps1'; gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | Set-Content $installer; pwsh -NoProfile -File $installer -InstallPsmux; Remove-Item $installer
 ```
 
-Useful installer options include `-Version 0.3.0`, `-Architecture x64|arm64`,
+Useful installer options include `-Version 0.4.0`, `-Architecture x64|arm64`,
 `-SkipPathUpdate`, and local `-PackagePath` / `-ChecksumPath` inputs for offline or
 CI validation.
 
@@ -124,6 +128,46 @@ dotnet run --project src/Flyt.Cli -- desk logs --name demo --pane builder --line
 dotnet run --project src/Flyt.Cli -- desk restart-pane --name demo --pane builder
 ```
 
+Create a reusable repo-local template, launch it, and open the live cockpit:
+
+```powershell
+flyt desk template init --path .
+flyt desk start --path . --template default
+flyt desk watch --name full-review --notify
+```
+
+Desk colours use separate channels: the role is stable (`planner`, `builder`,
+`reviewer`, `verifier`, `ops`) while attention state changes between Working,
+Needs Input, Done, Failed, Paused, and Unknown. Pane titles also carry coloured
+state glyphs so the psmux grid remains scannable while the Flyt cockpit is not
+in the foreground.
+
+Target selected agents without retyping a prompt in every pane:
+
+```powershell
+flyt desk send --name full-review --role reviewer --text "Review the current diff" --yes
+flyt desk send --name full-review --state NeedsInput --text "Continue with the documented default" --yes
+```
+
+Recover and inspect failures:
+
+```powershell
+flyt desk recover --name full-review
+flyt desk recover --name full-review --apply
+flyt desk failures --name full-review
+```
+
+Create a structured handoff bundle and deliver its path to the reviewer:
+
+```powershell
+flyt desk handoff --name full-review --from builder --to reviewer `
+  --goal "Ship CSV import" --action "Review correctness and regressions" `
+  --verification "dotnet test" --send
+```
+
+See [docs/desk-cockpit.md](docs/desk-cockpit.md) for templates, selectors,
+attention sources, colours, recovery, resource warnings, and handoffs.
+
 ## Safety defaults
 
 - One write owner per worktree.
@@ -133,6 +177,8 @@ dotnet run --project src/Flyt.Cli -- desk restart-pane --name demo --pane builde
 - No repository deletion/archival, public visibility changes, protected-branch force pushes, or unconfirmed remote-branch deletion.
 - Missions stop on success, blocker, policy approval, or hard limits.
 - Cancelling a hosted command kills its complete child process tree.
+- Multi-pane sends preview recipients and require explicit `--yes`; shell panes
+  are excluded unless requested.
 
 ## Proof boundary
 

@@ -29,7 +29,15 @@ jobs:
         shell: pwsh
         run: |
           Import-Module ./powershell/Flyt/Flyt.psd1 -Force
-          Get-Command Start-FlytDesk -ErrorAction Stop
+          @(
+            'Start-FlytDesk'
+            'Watch-FlytDesk'
+            'Send-FlytDeskText'
+            'Repair-FlytDesk'
+            'Get-FlytDeskFailure'
+            'New-FlytDeskTemplate'
+            'New-FlytDeskHandoff'
+          ) | ForEach-Object { Get-Command $_ -ErrorAction Stop }
       - name: Package and install smoke test
         if: runner.os == 'Windows'
         shell: pwsh
