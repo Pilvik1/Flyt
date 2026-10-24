@@ -39,7 +39,7 @@ $roles = @(
             Role = $_.Role
             Task = $_.Task
             WorkingDirectory = $WorkspacePath
-            Command = 'pwsh'
+            Command = "Write-Output 'FLYT_READY'"
             Color = $null
             Tags = $_.Tags
             ProviderSessionId = $null
@@ -61,6 +61,10 @@ try {
     $desk = @($status.registered | Where-Object sessionName -eq $DeskName)
     if ($desk.Count -ne 1 -or @($desk[0].panes).Count -ne 6) {
         throw 'Live psmux proof did not re-adopt exactly six panes.'
+    }
+    $unhealthy = @($desk[0].panes | Where-Object status -in @('Missing', 'Failed', 'Exited', 'Stopped'))
+    if ($unhealthy.Count -gt 0) {
+        throw "Live psmux proof found unhealthy panes: $($unhealthy.name -join ', ')."
     }
     $expectedColors = @{ planner = 'cyan'; builder = 'blue'; reviewer = 'magenta'; verifier = 'green' }
     foreach ($role in $expectedColors.Keys) {
