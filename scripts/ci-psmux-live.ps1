@@ -57,12 +57,15 @@ try {
         --template $templatePath | Write-Host
 
     Start-Sleep -Milliseconds 750
+    psmux list-panes -t $DeskName -F '#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_dead}' |
+        ForEach-Object { Write-Host "PSMUX: $_" }
     $status = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
+    Write-Host ($status | ConvertTo-Json -Depth 8)
     $desk = @($status.registered | Where-Object sessionName -eq $DeskName)
     if ($desk.Count -ne 1 -or @($desk[0].panes).Count -ne 6) {
         throw 'Live psmux proof did not re-adopt exactly six panes.'
     }
-    $unhealthy = @($desk[0].panes | Where-Object status -in @('Missing', 'Failed', 'Exited', 'Stopped'))
+    $unhealthy = @($desk[0].panes | Where-Object { $_.status -in @('Missing', 'Failed', 'Exited', 'Stopped') })
     if ($unhealthy.Count -gt 0) {
         throw "Live psmux proof found unhealthy panes: $($unhealthy.name -join ', ')."
     }
