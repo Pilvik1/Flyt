@@ -3,30 +3,25 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to package and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  verify:
+  release:
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
-      - run: dotnet restore FlytV1.slnx
-      - run: dotnet build FlytV1.slnx --configuration Release --no-restore
-      - run: dotnet test FlytV1.slnx --configuration Release --no-build
-
-  package:
-    needs: verify
-    strategy:
-      matrix:
-        runtime: [win-x64, win-arm64]
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
+          ref: ${{ inputs.tag || github.ref_name }}
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -35,30 +30,19 @@ jobs:
         run: |
           [xml]$project = Get-Content ./src/Flyt.Cli/Flyt.Cli.csproj -Raw
           $version = [string]$project.Project.PropertyGroup.Version
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            throw "Tag ${{ github.ref_name }} does not match project version v$version."
+          if ("v$version" -ne $env:RELEASE_TAG) {
+            throw "Tag $env:RELEASE_TAG does not match project version v$version."
           }
-      - name: Build package
+      - run: dotnet restore FlytV1.slnx
+      - run: dotnet build FlytV1.slnx --configuration Release --no-restore
+      - run: dotnet test FlytV1.slnx --configuration Release --no-build
+      - name: Build x64 and ARM64 packages
         shell: pwsh
-        run: ./scripts/package.ps1 -Runtime ${{ matrix.runtime }}
-      - uses: actions/upload-artifact@v6
-        with:
-          name: flyt-${{ matrix.runtime }}
-          path: |
-            artifacts/packages/*.zip
-            artifacts/packages/*.sha256
-          if-no-files-found: error
-
-  publish:
-    needs: package
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v7
-        with:
-          pattern: flyt-*
-          path: artifacts
-          merge-multiple: true
+        run: |
+          ./scripts/package.ps1 -Runtime win-x64
+          ./scripts/package.ps1 -Runtime win-arm64
       - name: Publish private GitHub release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" artifacts/* --repo "${{ github.repository }}" --verify-tag --generate-notes
+        run: gh release create $env:RELEASE_TAG artifacts/packages/*.zip artifacts/packages/*.sha256 --repo "${{ github.repository }}" --verify-tag --generate-notes
