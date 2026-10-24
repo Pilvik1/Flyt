@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Flyt.Core\Flyt.Core.csproj" />
+    <ProjectReference Include="..\Flyt.Persistence\Flyt.Persistence.csproj" />
+    <ProjectReference Include="..\Flyt.Providers\Flyt.Providers.csproj" />
+    <ProjectReference Include="..\Flyt.Terminal\Flyt.Terminal.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.57.2" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>flyt</AssemblyName>
+    <RootNamespace>Flyt.Cli</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flytv1.local/schemas/review.schema.json",
+  "title": "Flyt review verdict",
+  "type": "object",
+  "required": ["verdict", "findings"],
+  "properties": {
+    "verdict": { "type": "string", "enum": ["pass", "changes-required", "blocked"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "message"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+          "message": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
+

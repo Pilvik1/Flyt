@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flytv1.local/schemas/receipt.schema.json",
+  "title": "Flyt task receipt",
+  "type": "object",
+  "required": ["taskId", "status", "artifacts", "evidence"],
+  "properties": {
+    "taskId": { "type": "string", "format": "uuid" },
+    "status": { "type": "string", "enum": ["completed", "blocked", "failed"] },
+    "artifacts": { "type": "array", "items": { "type": "string" } },
+    "evidence": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}
+

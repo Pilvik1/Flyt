@@ -1,0 +1,8 @@
+name: repo-audit
+roles: [planner, reviewer, verifier]
+writeAccess: false
+gates:
+  - acceptance-criteria
+  - independent-review
+  - evidence-report
+

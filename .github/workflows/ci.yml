@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore FlytV1.slnx
+      - run: dotnet build FlytV1.slnx --configuration Release --no-restore
+      - run: dotnet test FlytV1.slnx --configuration Release --no-build
+      - name: CLI smoke test
+        run: dotnet src/Flyt.Cli/bin/Release/net10.0/flyt.dll desk start --name ci-smoke --path . --sessions "claude:builder,codex:reviewer,shell:ops" --dry-run
+      - name: PowerShell module import
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Import-Module ./powershell/Flyt/Flyt.psd1 -Force
+          Get-Command Start-FlytDesk -ErrorAction Stop

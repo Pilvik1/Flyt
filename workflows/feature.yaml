@@ -1,0 +1,10 @@
+name: feature
+roles: [planner, builder, reviewer, verifier, integrator]
+maxFixLoops: 2
+gates:
+  - acceptance-criteria
+  - build
+  - tests
+  - independent-review
+  - smoke-test
+

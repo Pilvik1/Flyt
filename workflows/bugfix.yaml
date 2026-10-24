@@ -1,0 +1,9 @@
+name: bugfix
+roles: [planner, builder, reviewer, verifier, integrator]
+maxFixLoops: 2
+gates:
+  - targeted-regression-test
+  - build
+  - independent-review
+  - final-verification
+

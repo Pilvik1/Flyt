@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Flyt.Cli/Flyt.Cli.csproj" />
+    <Project Path="src/Flyt.Core/Flyt.Core.csproj" />
+    <Project Path="src/Flyt.Persistence/Flyt.Persistence.csproj" />
+    <Project Path="src/Flyt.Providers/Flyt.Providers.csproj" />
+    <Project Path="src/Flyt.Terminal/Flyt.Terminal.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Flyt.Tests/Flyt.Tests.csproj" />
+  </Folder>
+</Solution>
