@@ -126,7 +126,9 @@ public sealed class FlytStateStoreTests : IDisposable
             ],
             now,
             now,
-            now);
+            now,
+            "main-vertical",
+            "builder");
 
         await store.SaveDeskAsync(desk);
         var reconciled = await store.UpdateDeskRuntimeAsync(
@@ -142,6 +144,8 @@ public sealed class FlytStateStoreTests : IDisposable
         Assert.Equal("session-1", pane.ProviderSessionId);
         Assert.Equal("full-review", reconciled.TemplateName);
         Assert.Equal(["test"], reconciled.Tags);
+        Assert.Equal("main-vertical", reconciled.LayoutName);
+        Assert.Equal("builder", reconciled.FocusedPaneName);
     }
 
     [Fact]

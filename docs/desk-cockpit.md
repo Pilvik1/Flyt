@@ -37,6 +37,42 @@ steps or replace deterministic verification.
 
 ## Cockpit and filtering
 
+`flyt desk open --template default` is the primary entry point. It starts or
+reopens the selected Desk, restores the most recently focused pane, applies the
+adaptive layout, runs state reconciliation and queue dispatch while attached,
+and enters the interactive psmux grid. With no name or template it opens the most
+recent Desk for the current workspace, or creates a default Desk when none exists.
+
+The integrated grid uses:
+
+- a stable role-coloured pane label;
+- explicit state glyph and text, plus a state-coloured active border;
+- a heavy white/attention border and dimmed inactive panes;
+- compact `pane · ROLE · STATE · task · repo` headers;
+- an aggregate `repo/branch · agents · working · waiting · queue · RAM` status line;
+- adaptive layouts for one through six panes.
+
+Focus and layout metadata survive reconciliation and stop/reopen cycles. `--no-attach`
+applies and verifies the cockpit configuration without entering the full-screen client.
+
+### Keyboard controls and overlays
+
+| Keys | Action |
+|---|---|
+| `Alt+1` … `Alt+6` | Jump directly to a pane |
+| `Ctrl+b`, `A` | Focus the next pane needing attention |
+| `Ctrl+b`, `Z` | Zoom or restore the active pane |
+| `Ctrl+b`, `S` | Preview and send text |
+| `Ctrl+b`, `R` | Confirm and restart/resume the active pane |
+| `Ctrl+b`, `H` | Create and deliver a structured handoff |
+| `Ctrl+b`, `Q` | Queue work for the active pane |
+| `Ctrl+b`, `L` | Show recent logs in a popup |
+| `Ctrl+b`, `O` | Open the Desk action menu |
+| `Ctrl+b`, `?` | Show the psmux shortcut overlay |
+
+The action menu keeps queue state, failure receipts, history, logs, handoffs, and
+pane jumping in context instead of forcing the operator into a separate dashboard.
+
 `flyt desk watch --notify` refreshes the cockpit and emits both a native Windows
 toast and an OSC 9/BEL terminal fallback when a pane newly needs input, completes,
 or fails. Filter `status` or `watch` with `--name`, `--role`, `--tag`, `--state`,
@@ -95,7 +131,7 @@ travel with the bundle. `--send` pastes the artifact path and requested action i
 the destination pane.
 
 Windows CI runs a real six-pane psmux lifecycle using shell panes and proves
-re-adoption, targeted paste, queue dispatch, handoff creation, history search,
-stop, and reopen. The target-host proof remains mandatory for authenticated
-Claude/Codex sessions, visual ConPTY colour rendering, and interactive toast
-delivery on Håkon's machine.
+integrated chrome configuration, role/state headers, action dispatch, re-adoption,
+queueing, handoffs, history, focus persistence, stop, and reopen. The target-host
+proof remains mandatory for authenticated Claude/Codex sessions, visual ConPTY
+colour rendering, popup ergonomics, and interactive toast delivery on Håkon's machine.

@@ -57,6 +57,21 @@ try {
         --template $templatePath | Write-Host
 
     Start-Sleep -Milliseconds 750
+    Invoke-LiveFlyt desk open --name $DeskName --no-attach | Write-Host
+    $borderLines = (& psmux show-options -t $DeskName -g -v pane-border-lines 2>&1 | Out-String).Trim()
+    $borderFormat = (& psmux show-options -t $DeskName -g -v pane-border-format 2>&1 | Out-String).Trim()
+    $inactiveStyle = (& psmux show-options -t $DeskName -g -v window-style 2>&1 | Out-String).Trim()
+    $statusLeft = (& psmux show-options -t $DeskName -g -v status-left 2>&1 | Out-String).Trim()
+    $bindings = (& psmux list-keys 2>&1 | Out-String)
+    if ($borderLines -ne 'heavy' `
+        -or $borderFormat -notmatch 'fg=blue' `
+        -or $borderFormat -notmatch 'fg=magenta' `
+        -or $inactiveStyle -notmatch 'dim=12' `
+        -or $statusLeft -notmatch 'FLYT' `
+        -or $bindings -notmatch 'desk action.+--action send' `
+        -or $bindings -notmatch 'M-6.+select-pane') {
+        throw "Integrated cockpit chrome/controls were not configured: border=$borderLines format=$borderFormat window=$inactiveStyle status=$statusLeft"
+    }
     psmux list-panes -t $DeskName -F '#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_dead}' |
         ForEach-Object { Write-Host "PSMUX: $_" }
     $status = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
@@ -74,6 +89,22 @@ try {
         if ($pane.Count -ne 1 -or $pane[0].color -ne $expectedColors[$role]) {
             throw "Role colour proof failed for $role."
         }
+    }
+    if (@($desk[0].panes | Where-Object name -eq 'builder')[0].task -ne 'Build') {
+        throw 'Cockpit pane identity did not preserve the builder task.'
+    }
+
+    $builderPaneId = @($desk[0].panes | Where-Object name -eq 'builder')[0].paneId
+    Invoke-LiveFlyt desk action `
+        --name $DeskName `
+        --pane-id $builderPaneId `
+        --action send `
+        --text "Write-Output 'FLYT_ACTION_PROOF'" `
+        --yes | Write-Host
+    Start-Sleep -Milliseconds 500
+    $actionLogs = Invoke-LiveFlyt desk logs --name $DeskName --pane builder --lines 80
+    if ($actionLogs -notmatch 'FLYT_ACTION_PROOF') {
+        throw 'Cockpit popup action path did not deliver targeted text.'
     }
 
     Invoke-LiveFlyt desk send `
@@ -125,13 +156,21 @@ try {
         throw 'Searchable Desk history did not return both handoff events.'
     }
 
+    Invoke-LiveFlyt desk focus --name $DeskName --pane reviewer | Write-Host
+    Invoke-LiveFlyt desk open --name $DeskName --no-attach | Write-Host
     Invoke-LiveFlyt desk stop --name $DeskName | Write-Host
     Invoke-LiveFlyt desk reopen --name $DeskName | Write-Host
     Start-Sleep -Milliseconds 750
+    Invoke-LiveFlyt desk open --name $DeskName --no-attach | Write-Host
     $reopened = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
     $reopenedDesk = @($reopened.registered | Where-Object sessionName -eq $DeskName)
     if ($reopenedDesk.Count -ne 1 -or @($reopenedDesk[0].panes).Count -ne 6) {
         throw 'Stopped Desk did not reopen with all six pane identities.'
+    }
+    $activeTitle = (& psmux list-panes -t $DeskName -F '#{pane_active}|#{pane_title}' |
+        Where-Object { $_ -like '1|*' } | Out-String).Trim()
+    if ($activeTitle -notmatch '^1\|reviewer · REVIEWER') {
+        throw "Focused pane was not restored after reopen: $activeTitle"
     }
 }
 finally {

@@ -79,6 +79,12 @@ and resource thresholds. psmux titles begin with the stable Flyt pane name so
 restart reconciliation remains deterministic while the visible suffix can show
 state, role, and task.
 
+The integrated cockpit remains psmux-native. Flyt configures role-coloured border
+labels, attention-aware active borders, adaptive layouts, keyboard actions, and
+popup commands, while a foreground `desk open` controller reconciles state and
+dispatches queued work beside the attached psmux client. SQLite persists the
+preferred layout and most recently active stable pane name for stop/reopen recovery.
+
 Targeted sending uses psmux's base64 `send-paste` boundary, followed by a separate
 submit key. This avoids command parsing and multiline corruption. Structured
 handoffs are durable JSON plus an optional Git patch under `.flyt/handoffs`;

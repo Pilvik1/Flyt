@@ -55,6 +55,36 @@ public sealed class PsmuxLayoutPlannerTests
             () => PsmuxLayoutPlanner.BuildPreview("psmux", "duplicate", sessions));
     }
 
+    [Theory]
+    [InlineData(1, "tiled")]
+    [InlineData(2, "even-horizontal")]
+    [InlineData(3, "main-vertical")]
+    [InlineData(4, "tiled")]
+    [InlineData(6, "tiled")]
+    public void LayoutNameForCount_UsesReadableAdaptiveLayouts(int count, string expected)
+    {
+        Assert.Equal(expected, PsmuxLayoutPlanner.LayoutNameForCount(count));
+    }
+
+    [Fact]
+    public void PaneTitle_IsCompactScannableAndKeepsStableIdentity()
+    {
+        var session = AgentSessionSpec.Create(
+            AgentProvider.Claude,
+            "builder",
+            Path.Combine(Path.GetTempPath(), "FlytV1"),
+            "claude",
+            role: "builder",
+            task: new string('x', 180));
+
+        var title = PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.NeedsInput);
+
+        Assert.StartsWith("builder · BUILDER · ! NEEDS INPUT ·", title, StringComparison.Ordinal);
+        Assert.Contains("FlytV1", title, StringComparison.Ordinal);
+        Assert.True(title.Length <= PsmuxLayoutPlanner.MaximumPaneTitleLength);
+        Assert.Equal("builder", PsmuxLayoutPlanner.StableNameFromTitle(title));
+    }
+
     private static AgentSessionSpec Session(AgentProvider provider, string name) =>
         AgentSessionSpec.Create(
             provider,
