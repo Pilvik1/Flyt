@@ -18,7 +18,7 @@ Mission mode is a deterministic host state machine. Models may propose plans and
 |---|---|
 | `Flyt.Cli` | Commands, terminal rendering, operator interactions |
 | `Flyt.Core` | Domain models, state transitions, autonomy policy |
-| `Flyt.Persistence` | SQLite mission and append-only event records |
+| `Flyt.Persistence` | Versioned SQLite migrations; Desk, plan, approval, and append-only event records |
 | `Flyt.Providers` | Claude, Codex, and shell discovery/command contracts |
 | `Flyt.Terminal` | psmux command plans and process adapter |
 | `powershell/Flyt` | PowerShell-native command surface |
@@ -55,9 +55,16 @@ Every persisted state change appends a corresponding event in the same SQLite tr
 
 ## Persistence
 
-SQLite is the sole authority. The initial schema stores missions and append-only events. Future migrations add tasks, sessions, approvals, evidence receipts, and artifact references. JSONL is permitted only as a diagnostic export.
+SQLite is the sole authority. Schema changes use ordered `PRAGMA user_version`
+migrations. The current schema stores missions, persisted plans and approvals,
+registered Desks and panes, plus append-only mission events. Evidence receipts and
+artifact references remain future migrations. JSONL is permitted only as a
+diagnostic export.
 
 ## Recovery contract
 
-The controller must be restartable. Replaying or reading durable state must never repeat an already-recorded transition or mutation. psmux sessions are re-adopted by stable names and metadata; terminal presence is not proof that a mission step completed.
-
+The controller must be restartable. Replaying or reading durable state must never
+repeat an already-recorded transition or mutation. psmux sessions are reconciled by
+stable Desk and pane names, while live pane IDs are refreshed in SQLite. Terminal
+presence is not proof that a mission step completed. Mission transitions use a
+persisted version column to reject stale concurrent updates.

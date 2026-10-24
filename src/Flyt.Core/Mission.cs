@@ -6,6 +6,8 @@ public sealed record Mission(
     string WorkspacePath,
     string Profile,
     MissionState State,
+    MissionState? ResumeState,
+    int Version,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
@@ -20,15 +22,7 @@ public sealed record Mission(
             [MissionState.Verifying] = ActiveStates(MissionState.Integrating, MissionState.Fixing, MissionState.Blocked),
             [MissionState.Fixing] = ActiveStates(MissionState.Reviewing, MissionState.Verifying, MissionState.Blocked),
             [MissionState.Integrating] = ActiveStates(MissionState.Completed, MissionState.Fixing, MissionState.Blocked),
-            [MissionState.Paused] = States(
-                MissionState.Planning,
-                MissionState.Executing,
-                MissionState.Reviewing,
-                MissionState.Verifying,
-                MissionState.Fixing,
-                MissionState.Integrating,
-                MissionState.Blocked,
-                MissionState.Cancelled),
+            [MissionState.Paused] = States(MissionState.Blocked, MissionState.Cancelled),
             [MissionState.Blocked] = States(
                 MissionState.Planning,
                 MissionState.Executing,
@@ -51,7 +45,7 @@ public sealed record Mission(
         ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
 
         var timestamp = now ?? DateTimeOffset.UtcNow;
-        var selectedPolicy = policy ?? AutonomyPolicy.Balanced;
+        var selectedPolicy = policy ?? AutonomyPolicy.Bounded;
 
         return new Mission(
             Guid.NewGuid(),
@@ -59,12 +53,21 @@ public sealed record Mission(
             Path.GetFullPath(workspacePath),
             selectedPolicy.Name,
             MissionState.Briefing,
+            ResumeState: null,
+            Version: 0,
             timestamp,
             timestamp);
     }
 
-    public bool CanTransitionTo(MissionState nextState) =>
-        AllowedTransitions.TryGetValue(State, out var allowed) && allowed.Contains(nextState);
+    public bool CanTransitionTo(MissionState nextState)
+    {
+        if (State == MissionState.Paused && nextState == ResumeState)
+        {
+            return true;
+        }
+
+        return AllowedTransitions.TryGetValue(State, out var allowed) && allowed.Contains(nextState);
+    }
 
     public Mission TransitionTo(MissionState nextState, DateTimeOffset? now = null)
     {
@@ -76,6 +79,10 @@ public sealed record Mission(
         return this with
         {
             State = nextState,
+            ResumeState = nextState == MissionState.Paused
+                ? State
+                : null,
+            Version = Version + 1,
             UpdatedAt = now ?? DateTimeOffset.UtcNow,
         };
     }

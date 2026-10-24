@@ -1,6 +1,6 @@
 @{
     RootModule = 'Flyt.psm1'
-    ModuleVersion = '0.1.0'
+    ModuleVersion = '0.2.0'
     GUID = '6f86803f-14bf-483b-80fd-b6376b775481'
     Author = 'Håkon Pilvik'
     CompanyName = 'HomeBase'
@@ -12,10 +12,18 @@
         'Test-FlytEnvironment',
         'Start-FlytDesk',
         'Enter-FlytDesk',
+        'Get-FlytDesk',
+        'Set-FlytDeskPaneFocus',
+        'Restart-FlytDeskPane',
+        'Get-FlytDeskPaneLog',
         'Stop-FlytDesk',
         'New-FlytMission',
+        'Set-FlytMissionPlan',
         'Get-FlytMission',
-        'Approve-FlytMission'
+        'Approve-FlytMission',
+        'Suspend-FlytMission',
+        'Resume-FlytMission',
+        'Stop-FlytMission'
     )
     CmdletsToExport = @()
     VariablesToExport = @()
@@ -27,4 +35,3 @@
         }
     }
 }
-

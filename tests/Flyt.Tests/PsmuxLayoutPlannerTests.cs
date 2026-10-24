@@ -54,6 +54,15 @@ public sealed class PsmuxLayoutPlannerTests
     }
 
     private static AgentSessionSpec Session(AgentProvider provider, string name) =>
-        AgentSessionSpec.Create(provider, name, Environment.CurrentDirectory);
+        AgentSessionSpec.Create(
+            provider,
+            name,
+            Environment.CurrentDirectory,
+            provider switch
+            {
+                AgentProvider.Claude => "claude",
+                AgentProvider.Codex => "codex",
+                AgentProvider.Shell => "pwsh",
+                _ => throw new ArgumentOutOfRangeException(nameof(provider)),
+            });
 }
-
