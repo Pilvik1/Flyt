@@ -28,7 +28,7 @@ public static class PsmuxLayoutPlanner
                 "-c",
                 sessions[0].WorkingDirectory,
             ]));
-        commands.Add(TitleCommand(executable, "$pane0", sessions[0].Name));
+        commands.Add(TitleCommand(executable, "$pane0", PaneTitle(sessions[0], DeskPaneStatus.Starting)));
         commands.Add(SendCommand(executable, "$pane0", sessions[0].LaunchCommand));
 
         for (var index = 1; index < sessions.Count; index++)
@@ -46,7 +46,10 @@ public static class PsmuxLayoutPlanner
                     "-c",
                     sessions[index].WorkingDirectory,
                 ]));
-            commands.Add(TitleCommand(executable, $"$pane{index}", sessions[index].Name));
+            commands.Add(TitleCommand(
+                executable,
+                $"$pane{index}",
+                PaneTitle(sessions[index], DeskPaneStatus.Starting)));
             commands.Add(SendCommand(executable, $"$pane{index}", sessions[index].LaunchCommand));
         }
 
@@ -92,6 +95,16 @@ public static class PsmuxLayoutPlanner
 
     internal static CommandInvocation TitleCommand(string executable, string paneId, string title) =>
         new(executable, ["select-pane", "-t", paneId, "-T", title]);
+
+    public static string PaneTitle(AgentSessionSpec session, DeskPaneStatus status) =>
+        $"{session.Name} | {DeskPalette.Glyph(status)} {StateLabel(status)} | {session.Role} | {session.Task}";
+
+    public static string StableNameFromTitle(string title) =>
+        title.Split('|', 2, StringSplitOptions.TrimEntries)[0];
+
+    private static string StateLabel(DeskPaneStatus status) => status == DeskPaneStatus.NeedsInput
+        ? "NEEDS INPUT"
+        : status.ToString().ToUpperInvariant();
 
     internal static CommandInvocation SendCommand(string executable, string paneId, string command) =>
         new(executable, ["send-keys", "-t", paneId, "--", command, "Enter"]);

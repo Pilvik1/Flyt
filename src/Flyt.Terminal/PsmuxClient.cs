@@ -51,6 +51,7 @@ public sealed class PsmuxClient(
                 cancellationToken).ConfigureAwait(false);
             sessionCreated = true;
             var firstPane = RequirePaneId(firstResult.StandardOutput);
+            await ConfigureDeskPresentationAsync(normalizedName, cancellationToken).ConfigureAwait(false);
             panes.Add(new DeskPaneHandle(firstPane, sessions[0]));
             await ConfigurePaneAsync(firstPane, sessions[0], cancellationToken).ConfigureAwait(false);
 
@@ -143,7 +144,9 @@ public sealed class PsmuxClient(
                     "-t",
                     PsmuxLayoutPlanner.NormalizeSessionName(sessionName),
                     "-F",
-                    "#{pane_id}\u001f#{pane_title}\u001f#{pane_current_command}\u001f#{pane_active}",
+                    "#{pane_id}\u001f#{pane_title}\u001f#{pane_current_command}\u001f#{pane_active}"
+                    + "\u001f#{pane_pid}\u001f#{pane_dead}\u001f#{pane_dead_status}"
+                    + "\u001f#{pane_ps_state}\u001f#{pane_ps_seen}",
                 ]),
             cancellationToken).ConfigureAwait(false);
 
@@ -160,6 +163,39 @@ public sealed class PsmuxClient(
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task SendTextAsync(
+        string paneId,
+        string text,
+        bool submit = true,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        var payload = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
+        await RunRequiredAsync(
+            new CommandInvocation(executable, ["send-paste", "-t", paneId, payload]),
+            cancellationToken).ConfigureAwait(false);
+        if (submit)
+        {
+            await RunRequiredAsync(
+                new CommandInvocation(executable, ["send-keys", "-t", paneId, "Enter"]),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task SetPanePresentationAsync(
+        string paneId,
+        AgentSessionSpec session,
+        DeskPaneStatus status,
+        CancellationToken cancellationToken = default)
+    {
+        await RunRequiredAsync(
+            PsmuxLayoutPlanner.TitleCommand(
+                executable,
+                paneId,
+                PsmuxLayoutPlanner.PaneTitle(session, status)),
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task RestartPaneAsync(
         string paneId,
         AgentSessionSpec session,
@@ -171,6 +207,28 @@ public sealed class PsmuxClient(
                 ["respawn-pane", "-k", "-t", paneId, "-c", session.WorkingDirectory]),
             cancellationToken).ConfigureAwait(false);
         await ConfigurePaneAsync(paneId, session, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DeskPaneHandle> AddPaneAsync(
+        string sessionName,
+        AgentSessionSpec session,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedName = PsmuxLayoutPlanner.NormalizeSessionName(sessionName);
+        var result = await RunRequiredAsync(
+            new CommandInvocation(
+                executable,
+                [
+                    "split-window", "-d", "-P", "-F", "#{pane_id}",
+                    "-t", $"{normalizedName}:0", "-c", session.WorkingDirectory,
+                ]),
+            cancellationToken).ConfigureAwait(false);
+        var paneId = RequirePaneId(result.StandardOutput);
+        await ConfigurePaneAsync(paneId, session, cancellationToken).ConfigureAwait(false);
+        await RunRequiredAsync(
+            new CommandInvocation(executable, ["select-layout", "-t", $"{normalizedName}:0", "tiled"]),
+            cancellationToken).ConfigureAwait(false);
+        return new DeskPaneHandle(paneId, session);
     }
 
     public async Task<string> CapturePaneAsync(
@@ -211,7 +269,10 @@ public sealed class PsmuxClient(
         CancellationToken cancellationToken)
     {
         await RunRequiredAsync(
-            PsmuxLayoutPlanner.TitleCommand(executable, paneId, session.Name),
+            PsmuxLayoutPlanner.TitleCommand(
+                executable,
+                paneId,
+                PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.Starting)),
             cancellationToken).ConfigureAwait(false);
         await RunRequiredAsync(
             PsmuxLayoutPlanner.SendCommand(
@@ -219,6 +280,28 @@ public sealed class PsmuxClient(
                 paneId,
                 session.LaunchCommand),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ConfigureDeskPresentationAsync(
+        string sessionName,
+        CancellationToken cancellationToken)
+    {
+        var options = new[]
+        {
+            ("program-status", "on"),
+            ("remain-on-exit", "failed"),
+            ("pane-border-status", "top"),
+            ("pane-border-format", " #{pane_index} #{pane_title} "),
+            ("pane-border-indicators", "both"),
+            ("status-interval", "1"),
+        };
+
+        foreach (var (name, value) in options)
+        {
+            await RunRequiredAsync(
+                new CommandInvocation(executable, ["set-option", "-t", sessionName, "-g", name, value]),
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task<CommandResult> RunRequiredAsync(
@@ -248,7 +331,7 @@ public sealed class PsmuxClient(
     private static PsmuxPaneSnapshot ParsePaneSnapshot(string value)
     {
         var parts = value.Split('\u001f');
-        if (parts.Length != 4 || string.IsNullOrWhiteSpace(parts[0]))
+        if (parts.Length != 9 || string.IsNullOrWhiteSpace(parts[0]))
         {
             throw new InvalidOperationException($"psmux returned an invalid pane record: {value}");
         }
@@ -256,9 +339,18 @@ public sealed class PsmuxClient(
         return new PsmuxPaneSnapshot(
             parts[0].Trim(),
             parts[1].Trim(),
+            PsmuxLayoutPlanner.StableNameFromTitle(parts[1].Trim()),
             parts[2].Trim(),
-            parts[3].Trim() == "1");
+            parts[3].Trim() == "1",
+            TryParseInt(parts[4]),
+            parts[5].Trim() == "1",
+            TryParseInt(parts[6]),
+            parts[7].Trim(),
+            parts[8].Trim() == "1");
     }
+
+    private static int? TryParseInt(string value) =>
+        int.TryParse(value.Trim(), out var parsed) ? parsed : null;
 }
 
 public sealed record DeskPaneHandle(string PaneId, AgentSessionSpec Session);
@@ -268,5 +360,34 @@ public sealed record DeskStartResult(string SessionName, IReadOnlyList<DeskPaneH
 public sealed record PsmuxPaneSnapshot(
     string PaneId,
     string Title,
+    string Name,
     string CurrentCommand,
-    bool IsActive);
+    bool IsActive,
+    int? ProcessId,
+    bool IsDead,
+    int? ExitCode,
+    string ProgramState,
+    bool IsSeen);
+
+public static class PsmuxStatusMapper
+{
+    public static DeskPaneStatus Map(PsmuxPaneSnapshot pane)
+    {
+        ArgumentNullException.ThrowIfNull(pane);
+        if (pane.IsDead)
+        {
+            return pane.ExitCode is null or 0 ? DeskPaneStatus.Exited : DeskPaneStatus.Failed;
+        }
+
+        return pane.ProgramState.ToLowerInvariant() switch
+        {
+            "working" => DeskPaneStatus.Working,
+            "blocked" => DeskPaneStatus.NeedsInput,
+            "done" when pane.IsSeen => DeskPaneStatus.Idle,
+            "done" => DeskPaneStatus.Done,
+            "error" => DeskPaneStatus.Failed,
+            "idle" => DeskPaneStatus.Idle,
+            _ => DeskPaneStatus.Running,
+        };
+    }
+}

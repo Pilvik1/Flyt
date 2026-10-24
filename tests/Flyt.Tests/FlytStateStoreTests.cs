@@ -97,6 +97,10 @@ public sealed class FlytStateStoreTests : IDisposable
             deskId,
             "daily-driver",
             _directory,
+            "full-review",
+            ["test"],
+            2,
+            12_000,
             DeskStatus.Running,
             [
                 new DeskPane(
@@ -107,7 +111,16 @@ public sealed class FlytStateStoreTests : IDisposable
                     "builder",
                     _directory,
                     "claude",
+                    "builder",
+                    "Implement",
+                    "blue",
+                    ["write"],
+                    "session-1",
                     DeskPaneStatus.Running,
+                    DeskStateSource.Registered,
+                    ProcessId: null,
+                    ExitCode: null,
+                    StateChangedAt: now,
                     now,
                     now),
             ],
@@ -124,6 +137,62 @@ public sealed class FlytStateStoreTests : IDisposable
         var pane = Assert.Single(reconciled.Panes);
         Assert.Equal("%42", pane.PaneId);
         Assert.Equal(DeskPaneStatus.Running, pane.Status);
+        Assert.Equal("builder", pane.Role);
+        Assert.Equal("blue", pane.Color);
+        Assert.Equal("session-1", pane.ProviderSessionId);
+        Assert.Equal("full-review", reconciled.TemplateName);
+        Assert.Equal(["test"], reconciled.Tags);
+    }
+
+    [Fact]
+    public async Task FailureReceipt_PersistsDiagnosticEvidence()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "state.db"));
+        await store.InitializeAsync();
+        var now = DateTimeOffset.UtcNow;
+        var deskId = Guid.NewGuid();
+        var paneId = Guid.NewGuid();
+        var desk = new Desk(
+            deskId,
+            "failures",
+            _directory,
+            null,
+            [],
+            2,
+            12_000,
+            DeskStatus.Running,
+            [new DeskPane(
+                paneId,
+                deskId,
+                "%1",
+                AgentProvider.Codex,
+                "reviewer",
+                _directory,
+                "codex",
+                "reviewer",
+                "Review",
+                "magenta",
+                ["review"],
+                null,
+                DeskPaneStatus.Failed,
+                DeskStateSource.Process,
+                123,
+                42,
+                now,
+                now,
+                now)],
+            now,
+            now,
+            now);
+        await store.SaveDeskAsync(desk);
+        await store.AddFailureReceiptAsync(new DeskFailureReceipt(
+            Guid.NewGuid(), deskId, paneId, "reviewer", AgentProvider.Codex,
+            _directory, "codex", 42, "Synthetic failure", "last output", 1024, now));
+        await store.SaveDeskAsync(desk with { UpdatedAt = now.AddMinutes(1) });
+
+        var receipt = Assert.Single(await store.ListFailureReceiptsAsync("failures"));
+        Assert.Equal(42, receipt.ExitCode);
+        Assert.Equal("last output", receipt.RecentOutput);
     }
 
     [Fact]

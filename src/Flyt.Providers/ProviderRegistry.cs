@@ -24,6 +24,22 @@ public sealed class ProviderRegistry
             ? adapter
             : throw new KeyNotFoundException($"No adapter is registered for {provider}.");
 
+    public string BuildInteractiveCommand(AgentProvider provider, string? sessionId = null)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || provider == AgentProvider.Shell)
+        {
+            return Get(provider).InteractiveCommand;
+        }
+
+        var quoted = $"'{sessionId.Replace("'", "''", StringComparison.Ordinal)}'";
+        return provider switch
+        {
+            AgentProvider.Claude => $"claude --resume {quoted}",
+            AgentProvider.Codex => $"codex resume {quoted}",
+            _ => Get(provider).InteractiveCommand,
+        };
+    }
+
     public async Task<IReadOnlyList<ProviderProbe>> ProbeAllAsync(
         CancellationToken cancellationToken = default)
     {
@@ -32,4 +48,3 @@ public sealed class ProviderRegistry
         return probes.OrderBy(probe => probe.Provider).ToArray();
     }
 }
-

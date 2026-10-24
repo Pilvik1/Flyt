@@ -52,15 +52,20 @@ function Start-FlytDesk {
         [string] $Name = "flyt-$(Get-Date -Format 'yyyyMMdd-HHmmss')",
         [string] $Path = (Get-Location).Path,
         [string[]] $Session = @('claude:planner', 'claude:builder', 'codex:reviewer'),
+        [string] $Template,
         [switch] $DryRun
     )
 
     $arguments = @(
         'desk', 'start',
         '--name', $Name,
-        '--path', (Resolve-Path -LiteralPath $Path).Path,
-        '--sessions', ($Session -join ',')
+        '--path', (Resolve-Path -LiteralPath $Path).Path
     )
+    if ($Template) {
+        $arguments += @('--template', $Template)
+    } else {
+        $arguments += @('--sessions', ($Session -join ','))
+    }
     if ($DryRun) {
         $arguments += '--dry-run'
     }
@@ -97,11 +102,114 @@ function Set-FlytDeskPaneFocus {
     param(
         [Parameter(Mandatory)]
         [string] $Name,
-        [Parameter(Mandatory)]
-        [string] $Pane
+        [string] $Pane,
+        [switch] $Next
     )
 
-    Invoke-Flyt desk focus --name $Name --pane $Pane
+    if ($Next) {
+        Invoke-Flyt desk focus --name $Name --next
+    } elseif ($Pane) {
+        Invoke-Flyt desk focus --name $Name --pane $Pane
+    } else {
+        throw 'Provide -Pane or -Next.'
+    }
+}
+
+function Watch-FlytDesk {
+    [CmdletBinding()]
+    param(
+        [string] $Name,
+        [string] $Role,
+        [string] $Tag,
+        [ValidateRange(250, 60000)]
+        [int] $IntervalMilliseconds = 1000,
+        [switch] $Notify
+    )
+
+    $arguments = @('desk', 'watch', '--interval', $IntervalMilliseconds)
+    if ($Name) { $arguments += @('--name', $Name) }
+    if ($Role) { $arguments += @('--role', $Role) }
+    if ($Tag) { $arguments += @('--tag', $Tag) }
+    if ($Notify) { $arguments += '--notify' }
+    Invoke-Flyt @arguments
+}
+
+function Send-FlytDeskText {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Text,
+        [string] $Pane,
+        [string] $Role,
+        [string] $Tag,
+        [string] $State,
+        [switch] $All,
+        [switch] $IncludeShell,
+        [switch] $NoSubmit
+    )
+
+    $arguments = @('desk', 'send', '--name', $Name, '--text', $Text)
+    if ($Pane) { $arguments += @('--pane', $Pane) }
+    if ($Role) { $arguments += @('--role', $Role) }
+    if ($Tag) { $arguments += @('--tag', $Tag) }
+    if ($State) { $arguments += @('--state', $State) }
+    if ($All) { $arguments += '--all' }
+    if ($IncludeShell) { $arguments += '--include-shell' }
+    if ($NoSubmit) { $arguments += '--no-submit' }
+    if ($PSCmdlet.ShouldProcess($Name, 'Send text to selected Flyt panes')) {
+        $arguments += '--yes'
+        Invoke-Flyt @arguments
+    }
+}
+
+function Repair-FlytDesk {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([Parameter(Mandatory)][string] $Name)
+
+    if ($PSCmdlet.ShouldProcess($Name, 'Recover failed or missing Flyt panes')) {
+        Invoke-Flyt desk recover --name $Name --apply
+    }
+}
+
+function Get-FlytDeskFailure {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string] $Name, [switch] $Json)
+
+    $arguments = @('desk', 'failures', '--name', $Name)
+    if ($Json) { $arguments += '--json' }
+    Invoke-Flyt @arguments
+}
+
+function New-FlytDeskTemplate {
+    [CmdletBinding()]
+    param([string] $Path = (Get-Location).Path)
+
+    Invoke-Flyt desk template init --path (Resolve-Path -LiteralPath $Path).Path
+}
+
+function New-FlytDeskHandoff {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $From,
+        [Parameter(Mandatory)][string] $To,
+        [Parameter(Mandatory)][string] $Goal,
+        [Parameter(Mandatory)][string] $Action,
+        [string[]] $Decision,
+        [string[]] $Verification,
+        [string[]] $Blocker,
+        [switch] $Send
+    )
+
+    $arguments = @(
+        'desk', 'handoff', '--name', $Name, '--from', $From, '--to', $To,
+        '--goal', $Goal, '--action', $Action
+    )
+    if ($Decision) { $arguments += @('--decisions', ($Decision -join '|')) }
+    if ($Verification) { $arguments += @('--verification', ($Verification -join '|')) }
+    if ($Blocker) { $arguments += @('--blockers', ($Blocker -join '|')) }
+    if ($Send) { $arguments += '--send' }
+    Invoke-Flyt @arguments
 }
 
 function Restart-FlytDeskPane {
@@ -236,6 +344,12 @@ Export-ModuleMember -Function @(
     'Start-FlytDesk',
     'Enter-FlytDesk',
     'Get-FlytDesk',
+    'Watch-FlytDesk',
+    'Send-FlytDeskText',
+    'Repair-FlytDesk',
+    'Get-FlytDeskFailure',
+    'New-FlytDeskTemplate',
+    'New-FlytDeskHandoff',
     'Set-FlytDeskPaneFocus',
     'Restart-FlytDeskPane',
     'Get-FlytDeskPaneLog',

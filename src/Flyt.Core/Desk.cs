@@ -9,15 +9,37 @@ public enum DeskStatus
 
 public enum DeskPaneStatus
 {
+    Starting,
     Running,
+    Working,
+    NeedsInput,
+    Idle,
+    Done,
+    Failed,
+    Paused,
+    Exited,
+    Unknown,
     Missing,
     Stopped,
+}
+
+public enum DeskStateSource
+{
+    Registered,
+    Provider,
+    ProgramStatus,
+    Process,
+    Operator,
 }
 
 public sealed record Desk(
     Guid Id,
     string SessionName,
     string WorkspacePath,
+    string? TemplateName,
+    IReadOnlyList<string> Tags,
+    int MaxConcurrentExpensiveTasks,
+    int MemoryWarningMegabytes,
     DeskStatus Status,
     IReadOnlyList<DeskPane> Panes,
     DateTimeOffset CreatedAt,
@@ -32,6 +54,37 @@ public sealed record DeskPane(
     string Name,
     string WorkingDirectory,
     string LaunchCommand,
+    string Role,
+    string Task,
+    string Color,
+    IReadOnlyList<string> Tags,
+    string? ProviderSessionId,
     DeskPaneStatus Status,
+    DeskStateSource StatusSource,
+    int? ProcessId,
+    int? ExitCode,
+    DateTimeOffset StateChangedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+public sealed record DeskFailureReceipt(
+    Guid Id,
+    Guid DeskId,
+    Guid PaneId,
+    string PaneName,
+    AgentProvider Provider,
+    string WorkingDirectory,
+    string LaunchCommand,
+    int? ExitCode,
+    string Reason,
+    string RecentOutput,
+    long? WorkingSetBytes,
+    DateTimeOffset OccurredAt);
+
+public sealed record DeskPaneRuntime(
+    string Name,
+    string PaneId,
+    DeskPaneStatus Status,
+    DeskStateSource Source,
+    int? ProcessId,
+    int? ExitCode);

@@ -26,9 +26,15 @@ internal static partial class Program
         {
             "start" => await StartDeskAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
             "status" => await ShowDeskStatusAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
+            "watch" => await WatchDeskAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
+            "send" => await SendDeskTextAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
+            "recover" => await RecoverDeskAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
+            "failures" => await ShowFailureReceiptsAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
+            "template" => await RunDeskTemplateAsync(args[1..], cancellationToken).ConfigureAwait(false),
+            "handoff" => await CreateDeskHandoffAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             "attach" => await AttachDeskAsync(psmux, args[1..], cancellationToken).ConfigureAwait(false),
             "focus" => await FocusDeskPaneAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
-            "restart-pane" => await RestartDeskPaneAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
+            "restart-pane" => await RestartDeskPaneAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
             "logs" => await ShowDeskPaneLogsAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             "stop" => await StopDeskAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand($"desk {args[0]}"),
@@ -48,9 +54,26 @@ internal static partial class Program
             throw new DirectoryNotFoundException(path);
         }
 
-        var name = GetOption(args, "--name") ?? $"flyt-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
-        var sessionValue = GetOption(args, "--sessions") ?? "claude:planner,claude:builder,codex:reviewer";
-        var sessions = ParseSessionSpecs(sessionValue, path, providers);
+        var templateReference = GetOption(args, "--template");
+        DeskTemplate? template = null;
+        IReadOnlyList<AgentSessionSpec> sessions;
+        if (templateReference is not null)
+        {
+            (template, _) = await DeskTemplateLoader.LoadAsync(
+                templateReference,
+                path,
+                cancellationToken).ConfigureAwait(false);
+            sessions = DeskTemplateLoader.BuildSessions(template, path, providers);
+        }
+        else
+        {
+            var sessionValue = GetOption(args, "--sessions")
+                ?? "claude:planner,claude:builder,codex:reviewer";
+            sessions = ParseSessionSpecs(sessionValue, path, providers);
+        }
+
+        var name = GetOption(args, "--name")
+            ?? (template is null ? $"flyt-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}" : template.Name);
         var dryRun = HasFlag(args, "--dry-run");
 
         if (dryRun)
@@ -86,6 +109,10 @@ internal static partial class Program
             deskId,
             started.SessionName,
             path,
+            template?.Name,
+            template?.Tags ?? [],
+            template?.MaxConcurrentExpensiveTasks ?? 2,
+            template?.MemoryWarningMegabytes ?? 12_000,
             DeskStatus.Running,
             started.Panes.Select(pane => new DeskPane(
                 Guid.NewGuid(),
@@ -95,7 +122,16 @@ internal static partial class Program
                 pane.Session.Name,
                 pane.Session.WorkingDirectory,
                 pane.Session.LaunchCommand,
-                DeskPaneStatus.Running,
+                pane.Session.Role,
+                pane.Session.Task,
+                pane.Session.Color,
+                pane.Session.Tags,
+                pane.Session.ProviderSessionId,
+                DeskPaneStatus.Starting,
+                DeskStateSource.Registered,
+                ProcessId: null,
+                ExitCode: null,
+                StateChangedAt: now,
                 now,
                 now)).ToArray(),
             now,
@@ -136,76 +172,29 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var liveSessions = await psmux.ListSessionsAsync(cancellationToken).ConfigureAwait(false);
-        var liveSet = liveSessions.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var registered = await store.ListDesksAsync(cancellationToken).ConfigureAwait(false);
-        var reconciled = new List<Desk>();
-
-        foreach (var desk in registered)
-        {
-            if (!liveSet.Contains(desk.SessionName))
-            {
-                reconciled.Add(await store.UpdateDeskRuntimeAsync(
-                    desk.SessionName,
-                    desk.Status == DeskStatus.Stopped ? DeskStatus.Stopped : DeskStatus.Missing,
-                    new Dictionary<string, string>(),
-                    cancellationToken).ConfigureAwait(false));
-                continue;
-            }
-
-            var panes = await psmux.ListPanesAsync(desk.SessionName, cancellationToken).ConfigureAwait(false);
-            var byName = panes
-                .Where(pane => !string.IsNullOrWhiteSpace(pane.Title))
-                .GroupBy(pane => pane.Title, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.First().PaneId, StringComparer.OrdinalIgnoreCase);
-            reconciled.Add(await store.UpdateDeskRuntimeAsync(
-                desk.SessionName,
-                DeskStatus.Running,
-                byName,
-                cancellationToken).ConfigureAwait(false));
-        }
-
-        var external = liveSessions
-            .Where(session => registered.All(desk => !string.Equals(
-                desk.SessionName,
-                session,
-                StringComparison.OrdinalIgnoreCase)))
-            .ToArray();
+        var snapshot = await DeskRuntime.ReconcileAsync(
+            psmux,
+            store,
+            applyStyles: true,
+            captureFailures: true,
+            cancellationToken).ConfigureAwait(false);
 
         if (HasFlag(args, "--json"))
         {
             AnsiConsole.WriteLine(JsonSerializer.Serialize(
                 new
                 {
-                    registered = reconciled,
-                    externalSessions = external,
+                    registered = snapshot.Desks,
+                    externalSessions = snapshot.ExternalSessions,
+                    resources = snapshot.Resources,
+                    warnings = snapshot.Warnings,
                 },
                 JsonOptions));
             return 0;
         }
 
-        var table = new Table()
-            .Border(TableBorder.Rounded)
-            .AddColumn("Desk")
-            .AddColumn("State")
-            .AddColumn("Panes")
-            .AddColumn("Workspace");
-        foreach (var desk in reconciled)
-        {
-            var running = desk.Panes.Count(pane => pane.Status == DeskPaneStatus.Running);
-            table.AddRow(
-                Markup.Escape(desk.SessionName),
-                Markup.Escape(desk.Status.ToString()),
-                $"{running}/{desk.Panes.Count}",
-                Markup.Escape(desk.WorkspacePath));
-        }
-
-        foreach (var session in external)
-        {
-            table.AddRow(Markup.Escape(session), "External", "?", "-");
-        }
-
-        AnsiConsole.Write(table);
+        AnsiConsole.Write(BuildDeskDashboard(snapshot, args));
+        PrintDeskWarnings(snapshot);
         return 0;
     }
 
@@ -224,7 +213,29 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var pane = await RequireRegisteredPaneAsync(store, args, cancellationToken).ConfigureAwait(false);
+        DeskPane pane;
+        if (HasFlag(args, "--next"))
+        {
+            var name = PsmuxLayoutPlanner.NormalizeSessionName(RequireOption(args, "--name"));
+            var desk = await store.GetDeskAsync(name, cancellationToken).ConfigureAwait(false)
+                ?? throw new KeyNotFoundException($"Desk '{name}' is not registered.");
+            pane = desk.Panes
+                .Where(value => value.Status is not (DeskPaneStatus.Missing or DeskPaneStatus.Stopped))
+                .OrderBy(value => value.Status switch
+                {
+                    DeskPaneStatus.NeedsInput => 0,
+                    DeskPaneStatus.Failed => 1,
+                    DeskPaneStatus.Done => 2,
+                    _ => 3,
+                })
+                .ThenBy(value => value.UpdatedAt)
+                .FirstOrDefault()
+                ?? throw new InvalidOperationException("No focusable pane was found.");
+        }
+        else
+        {
+            pane = await RequireRegisteredPaneAsync(store, args, cancellationToken).ConfigureAwait(false);
+        }
         await psmux.FocusAsync(pane.PaneId, cancellationToken).ConfigureAwait(false);
         AnsiConsole.MarkupLine($"[green]Focused pane:[/] {Markup.Escape(pane.Name)}");
         return 0;
@@ -233,15 +244,12 @@ internal static partial class Program
     private static async Task<int> RestartDeskPaneAsync(
         PsmuxClient psmux,
         FlytStateStore store,
+        ProviderRegistry providers,
         string[] args,
         CancellationToken cancellationToken)
     {
         var pane = await RequireRegisteredPaneAsync(store, args, cancellationToken).ConfigureAwait(false);
-        var session = AgentSessionSpec.Create(
-            pane.Provider,
-            pane.Name,
-            pane.WorkingDirectory,
-            pane.LaunchCommand);
+        var session = SessionFromPane(pane, providers);
         await psmux.RestartPaneAsync(pane.PaneId, session, cancellationToken).ConfigureAwait(false);
         AnsiConsole.MarkupLine($"[green]Restarted pane:[/] {Markup.Escape(pane.Name)}");
         return 0;
@@ -279,7 +287,7 @@ internal static partial class Program
             paneName,
             StringComparison.OrdinalIgnoreCase))
             ?? throw new KeyNotFoundException($"Pane '{paneName}' is not registered in desk '{name}'.");
-        if (pane.Status != DeskPaneStatus.Running)
+        if (pane.Status is DeskPaneStatus.Missing or DeskPaneStatus.Stopped)
         {
             throw new InvalidOperationException(
                 $"Pane '{paneName}' is {pane.Status}; run 'flyt desk status' to reconcile first.");

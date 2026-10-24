@@ -121,6 +121,48 @@ public sealed class FlytStateStore
                 """,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (version < 3)
+        {
+            await ApplyMigrationAsync(
+                connection,
+                3,
+                """
+                ALTER TABLE desk_panes ADD COLUMN role TEXT NOT NULL DEFAULT '';
+                ALTER TABLE desk_panes ADD COLUMN task TEXT NOT NULL DEFAULT '';
+                ALTER TABLE desk_panes ADD COLUMN color TEXT NOT NULL DEFAULT 'white';
+                ALTER TABLE desk_panes ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';
+                ALTER TABLE desk_panes ADD COLUMN provider_session_id TEXT NULL;
+                ALTER TABLE desk_panes ADD COLUMN status_source TEXT NOT NULL DEFAULT 'Registered';
+                ALTER TABLE desk_panes ADD COLUMN process_id INTEGER NULL;
+                ALTER TABLE desk_panes ADD COLUMN exit_code INTEGER NULL;
+                ALTER TABLE desk_panes ADD COLUMN state_changed_at TEXT NULL;
+                ALTER TABLE desks ADD COLUMN template_name TEXT NULL;
+                ALTER TABLE desks ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';
+                ALTER TABLE desks ADD COLUMN max_concurrent_expensive_tasks INTEGER NOT NULL DEFAULT 2;
+                ALTER TABLE desks ADD COLUMN memory_warning_megabytes INTEGER NOT NULL DEFAULT 12000;
+
+                CREATE TABLE desk_failure_receipts (
+                    id TEXT PRIMARY KEY,
+                    desk_id TEXT NOT NULL,
+                    pane_id TEXT NOT NULL,
+                    pane_name TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    working_directory TEXT NOT NULL,
+                    launch_command TEXT NOT NULL,
+                    exit_code INTEGER NULL,
+                    reason TEXT NOT NULL,
+                    recent_output TEXT NOT NULL,
+                    working_set_bytes INTEGER NULL,
+                    occurred_at TEXT NOT NULL,
+                    FOREIGN KEY (desk_id) REFERENCES desks(id)
+                );
+
+                CREATE INDEX ix_desk_failure_receipts_desk_time
+                    ON desk_failure_receipts(desk_id, occurred_at DESC);
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateMissionAsync(
@@ -467,12 +509,20 @@ public sealed class FlytStateStore
             command.Transaction = sqliteTransaction;
             command.CommandText = """
                 INSERT INTO desks (
-                    id, session_name, workspace_path, status, created_at, updated_at, last_reconciled_at
+                    id, session_name, workspace_path, template_name, tags_json,
+                    max_concurrent_expensive_tasks, memory_warning_megabytes,
+                    status, created_at, updated_at, last_reconciled_at
                 ) VALUES (
-                    $id, $sessionName, $workspacePath, $status, $createdAt, $updatedAt, $lastReconciledAt
+                    $id, $sessionName, $workspacePath, $templateName, $tagsJson,
+                    $maxConcurrentExpensiveTasks, $memoryWarningMegabytes,
+                    $status, $createdAt, $updatedAt, $lastReconciledAt
                 )
                 ON CONFLICT(session_name) DO UPDATE SET
                     workspace_path = excluded.workspace_path,
+                    template_name = excluded.template_name,
+                    tags_json = excluded.tags_json,
+                    max_concurrent_expensive_tasks = excluded.max_concurrent_expensive_tasks,
+                    memory_warning_megabytes = excluded.memory_warning_megabytes,
                     status = excluded.status,
                     updated_at = excluded.updated_at,
                     last_reconciled_at = excluded.last_reconciled_at;
@@ -516,7 +566,9 @@ public sealed class FlytStateStore
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, session_name, workspace_path, status, created_at, updated_at, last_reconciled_at
+            SELECT id, session_name, workspace_path, template_name, tags_json,
+                   max_concurrent_expensive_tasks, memory_warning_megabytes,
+                   status, created_at, updated_at, last_reconciled_at
             FROM desks
             ORDER BY updated_at DESC;
             """;
@@ -544,10 +596,27 @@ public sealed class FlytStateStore
         string sessionName,
         DeskStatus status,
         IReadOnlyDictionary<string, string> paneIdsByName,
+        CancellationToken cancellationToken = default) =>
+        await UpdateDeskRuntimeAsync(
+            sessionName,
+            status,
+            paneIdsByName.Select(value => new DeskPaneRuntime(
+                value.Key,
+                value.Value,
+                DeskPaneStatus.Running,
+                DeskStateSource.Process,
+                ProcessId: null,
+                ExitCode: null)).ToArray(),
+            cancellationToken).ConfigureAwait(false);
+
+    public async Task<Desk> UpdateDeskRuntimeAsync(
+        string sessionName,
+        DeskStatus status,
+        IReadOnlyList<DeskPaneRuntime> paneRuntimes,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionName);
-        ArgumentNullException.ThrowIfNull(paneIdsByName);
+        ArgumentNullException.ThrowIfNull(paneRuntimes);
 
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -584,10 +653,17 @@ public sealed class FlytStateStore
             markPanes.Transaction = sqliteTransaction;
             markPanes.CommandText = """
                 UPDATE desk_panes
-                SET status = $status, updated_at = $updatedAt
+                SET status = $status,
+                    status_source = $statusSource,
+                    state_changed_at = CASE
+                        WHEN status <> $status THEN $updatedAt
+                        ELSE COALESCE(state_changed_at, $updatedAt)
+                    END,
+                    updated_at = $updatedAt
                 WHERE desk_id = $deskId;
                 """;
             markPanes.Parameters.AddWithValue("$status", defaultPaneStatus.ToString());
+            markPanes.Parameters.AddWithValue("$statusSource", DeskStateSource.Process.ToString());
             markPanes.Parameters.AddWithValue("$updatedAt", FormatDate(timestamp));
             markPanes.Parameters.AddWithValue("$deskId", desk.Id.ToString("D"));
             await markPanes.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -595,20 +671,32 @@ public sealed class FlytStateStore
 
         if (status == DeskStatus.Running)
         {
-            foreach (var (name, paneId) in paneIdsByName)
+            foreach (var runtime in paneRuntimes)
             {
                 await using var updatePane = connection.CreateCommand();
                 updatePane.Transaction = sqliteTransaction;
                 updatePane.CommandText = """
                     UPDATE desk_panes
-                    SET pane_id = $paneId, status = $status, updated_at = $updatedAt
+                    SET pane_id = $paneId,
+                        status = $status,
+                        status_source = $statusSource,
+                        process_id = $processId,
+                        exit_code = $exitCode,
+                        state_changed_at = CASE
+                            WHEN status <> $status THEN $updatedAt
+                            ELSE COALESCE(state_changed_at, $updatedAt)
+                        END,
+                        updated_at = $updatedAt
                     WHERE desk_id = $deskId AND name = $name COLLATE NOCASE;
                     """;
-                updatePane.Parameters.AddWithValue("$paneId", paneId);
-                updatePane.Parameters.AddWithValue("$status", DeskPaneStatus.Running.ToString());
+                updatePane.Parameters.AddWithValue("$paneId", runtime.PaneId);
+                updatePane.Parameters.AddWithValue("$status", runtime.Status.ToString());
+                updatePane.Parameters.AddWithValue("$statusSource", runtime.Source.ToString());
+                updatePane.Parameters.AddWithValue("$processId", runtime.ProcessId ?? (object)DBNull.Value);
+                updatePane.Parameters.AddWithValue("$exitCode", runtime.ExitCode ?? (object)DBNull.Value);
                 updatePane.Parameters.AddWithValue("$updatedAt", FormatDate(timestamp));
                 updatePane.Parameters.AddWithValue("$deskId", desk.Id.ToString("D"));
-                updatePane.Parameters.AddWithValue("$name", name);
+                updatePane.Parameters.AddWithValue("$name", runtime.Name);
                 await updatePane.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -616,6 +704,83 @@ public sealed class FlytStateStore
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return await GetDeskAsync(sessionName, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Desk disappeared after reconciliation.");
+    }
+
+    public async Task AddFailureReceiptAsync(
+        DeskFailureReceipt receipt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO desk_failure_receipts (
+                id, desk_id, pane_id, pane_name, provider, working_directory,
+                launch_command, exit_code, reason, recent_output, working_set_bytes, occurred_at
+            ) VALUES (
+                $id, $deskId, $paneId, $paneName, $provider, $workingDirectory,
+                $launchCommand, $exitCode, $reason, $recentOutput, $workingSetBytes, $occurredAt
+            );
+            """;
+        command.Parameters.AddWithValue("$id", receipt.Id.ToString("D"));
+        command.Parameters.AddWithValue("$deskId", receipt.DeskId.ToString("D"));
+        command.Parameters.AddWithValue("$paneId", receipt.PaneId.ToString("D"));
+        command.Parameters.AddWithValue("$paneName", receipt.PaneName);
+        command.Parameters.AddWithValue("$provider", receipt.Provider.ToString());
+        command.Parameters.AddWithValue("$workingDirectory", receipt.WorkingDirectory);
+        command.Parameters.AddWithValue("$launchCommand", receipt.LaunchCommand);
+        command.Parameters.AddWithValue("$exitCode", receipt.ExitCode ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$reason", receipt.Reason);
+        command.Parameters.AddWithValue("$recentOutput", receipt.RecentOutput);
+        command.Parameters.AddWithValue("$workingSetBytes", receipt.WorkingSetBytes ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$occurredAt", FormatDate(receipt.OccurredAt));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<DeskFailureReceipt>> ListFailureReceiptsAsync(
+        string sessionName,
+        int limit = 20,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 500)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        var receipts = new List<DeskFailureReceipt>();
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT r.id, r.desk_id, r.pane_id, r.pane_name, r.provider,
+                   r.working_directory, r.launch_command, r.exit_code, r.reason,
+                   r.recent_output, r.working_set_bytes, r.occurred_at
+            FROM desk_failure_receipts r
+            JOIN desks d ON d.id = r.desk_id
+            WHERE d.session_name = $sessionName
+            ORDER BY r.occurred_at DESC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$sessionName", sessionName);
+        command.Parameters.AddWithValue("$limit", limit);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            receipts.Add(new DeskFailureReceipt(
+                Guid.Parse(reader.GetString(0)),
+                Guid.Parse(reader.GetString(1)),
+                Guid.Parse(reader.GetString(2)),
+                reader.GetString(3),
+                Enum.Parse<AgentProvider>(reader.GetString(4)),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                reader.GetString(8),
+                reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetInt64(10),
+                ParseDate(reader.GetString(11))));
+        }
+
+        return receipts;
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
@@ -693,7 +858,9 @@ public sealed class FlytStateStore
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            SELECT id, session_name, workspace_path, status, created_at, updated_at, last_reconciled_at
+            SELECT id, session_name, workspace_path, template_name, tags_json,
+                   max_concurrent_expensive_tasks, memory_warning_megabytes,
+                   status, created_at, updated_at, last_reconciled_at
             FROM desks
             WHERE session_name = $sessionName;
             """;
@@ -734,7 +901,16 @@ public sealed class FlytStateStore
                    name,
                    working_directory,
                    launch_command,
+                   role,
+                   task,
+                   color,
+                   tags_json,
+                   provider_session_id,
                    status,
+                   status_source,
+                   process_id,
+                   exit_code,
+                   state_changed_at,
                    created_at,
                    updated_at
             FROM desk_panes
@@ -753,9 +929,18 @@ public sealed class FlytStateStore
                 reader.GetString(4),
                 reader.GetString(5),
                 reader.GetString(6),
-                Enum.Parse<DeskPaneStatus>(reader.GetString(7)),
-                ParseDate(reader.GetString(8)),
-                ParseDate(reader.GetString(9))));
+                string.IsNullOrWhiteSpace(reader.GetString(7)) ? reader.GetString(4) : reader.GetString(7),
+                string.IsNullOrWhiteSpace(reader.GetString(8)) ? reader.GetString(4) : reader.GetString(8),
+                reader.GetString(9),
+                JsonSerializer.Deserialize<string[]>(reader.GetString(10)) ?? [],
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                Enum.Parse<DeskPaneStatus>(reader.GetString(12)),
+                Enum.Parse<DeskStateSource>(reader.GetString(13)),
+                reader.IsDBNull(14) ? null : reader.GetInt32(14),
+                reader.IsDBNull(15) ? null : reader.GetInt32(15),
+                reader.IsDBNull(16) ? ParseDate(reader.GetString(17)) : ParseDate(reader.GetString(16)),
+                ParseDate(reader.GetString(17)),
+                ParseDate(reader.GetString(18))));
         }
 
         return panes;
@@ -778,7 +963,16 @@ public sealed class FlytStateStore
                 name,
                 working_directory,
                 launch_command,
+                role,
+                task,
+                color,
+                tags_json,
+                provider_session_id,
                 status,
+                status_source,
+                process_id,
+                exit_code,
+                state_changed_at,
                 created_at,
                 updated_at
             ) VALUES (
@@ -789,7 +983,16 @@ public sealed class FlytStateStore
                 $name,
                 $workingDirectory,
                 $launchCommand,
+                $role,
+                $task,
+                $color,
+                $tagsJson,
+                $providerSessionId,
                 $status,
+                $statusSource,
+                $processId,
+                $exitCode,
+                $stateChangedAt,
                 $createdAt,
                 $updatedAt
             );
@@ -801,7 +1004,18 @@ public sealed class FlytStateStore
         command.Parameters.AddWithValue("$name", pane.Name);
         command.Parameters.AddWithValue("$workingDirectory", pane.WorkingDirectory);
         command.Parameters.AddWithValue("$launchCommand", pane.LaunchCommand);
+        command.Parameters.AddWithValue("$role", pane.Role);
+        command.Parameters.AddWithValue("$task", pane.Task);
+        command.Parameters.AddWithValue("$color", pane.Color);
+        command.Parameters.AddWithValue("$tagsJson", JsonSerializer.Serialize(pane.Tags));
+        command.Parameters.AddWithValue(
+            "$providerSessionId",
+            pane.ProviderSessionId ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$status", pane.Status.ToString());
+        command.Parameters.AddWithValue("$statusSource", pane.StatusSource.ToString());
+        command.Parameters.AddWithValue("$processId", pane.ProcessId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$exitCode", pane.ExitCode ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$stateChangedAt", FormatDate(pane.StateChangedAt));
         command.Parameters.AddWithValue("$createdAt", FormatDate(pane.CreatedAt));
         command.Parameters.AddWithValue("$updatedAt", FormatDate(pane.UpdatedAt));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -812,6 +1026,10 @@ public sealed class FlytStateStore
         command.Parameters.AddWithValue("$id", desk.Id.ToString("D"));
         command.Parameters.AddWithValue("$sessionName", desk.SessionName);
         command.Parameters.AddWithValue("$workspacePath", desk.WorkspacePath);
+        command.Parameters.AddWithValue("$templateName", desk.TemplateName ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$tagsJson", JsonSerializer.Serialize(desk.Tags));
+        command.Parameters.AddWithValue("$maxConcurrentExpensiveTasks", desk.MaxConcurrentExpensiveTasks);
+        command.Parameters.AddWithValue("$memoryWarningMegabytes", desk.MemoryWarningMegabytes);
         command.Parameters.AddWithValue("$status", desk.Status.ToString());
         command.Parameters.AddWithValue("$createdAt", FormatDate(desk.CreatedAt));
         command.Parameters.AddWithValue("$updatedAt", FormatDate(desk.UpdatedAt));
@@ -824,11 +1042,15 @@ public sealed class FlytStateStore
         Guid.Parse(reader.GetString(0)),
         reader.GetString(1),
         reader.GetString(2),
-        Enum.Parse<DeskStatus>(reader.GetString(3)),
+        reader.IsDBNull(3) ? null : reader.GetString(3),
+        JsonSerializer.Deserialize<string[]>(reader.GetString(4)) ?? [],
+        reader.GetInt32(5),
+        reader.GetInt32(6),
+        Enum.Parse<DeskStatus>(reader.GetString(7)),
         panes,
-        ParseDate(reader.GetString(4)),
-        ParseDate(reader.GetString(5)),
-        reader.IsDBNull(6) ? null : ParseDate(reader.GetString(6)));
+        ParseDate(reader.GetString(8)),
+        ParseDate(reader.GetString(9)),
+        reader.IsDBNull(10) ? null : ParseDate(reader.GetString(10)));
 
     private static async Task<Mission> TransitionMissionAsync(
         SqliteConnection connection,
