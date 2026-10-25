@@ -2,6 +2,7 @@ using Flyt.Cli;
 using Flyt.Core;
 using Flyt.Persistence;
 using Flyt.Terminal;
+using Microsoft.Data.Sqlite;
 
 namespace Flyt.Tests;
 
@@ -78,6 +79,7 @@ public sealed class MissionExecutionCoordinatorTests : IDisposable
 
     public void Dispose()
     {
+        SqliteConnection.ClearAllPools();
         if (Directory.Exists(_directory))
         {
             Directory.Delete(_directory, recursive: true);

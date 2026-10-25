@@ -45,6 +45,11 @@ public sealed class GitWorktreeManagerTests : IDisposable
     {
         if (Directory.Exists(_directory))
         {
+            foreach (var file in Directory.EnumerateFiles(_directory, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+
             Directory.Delete(_directory, recursive: true);
         }
 
