@@ -187,16 +187,30 @@ public sealed class FlytStateStoreTests : IDisposable
             Passed: true,
             workspace.BaseCommit,
             workspace.HeadCommit,
+            new string('b', 64),
             ["src/Change.cs"],
             "api_key=secret-value\nPassed",
             string.Empty,
             now,
             DateTimeOffset.UtcNow);
         await store.SaveMissionVerificationReceiptAsync(receipt);
+        var review = new MissionReviewReceipt(
+            Guid.NewGuid(),
+            mission.Id,
+            attempt.Id,
+            AgentProvider.Codex,
+            MissionReviewVerdict.Pass,
+            0,
+            $"token=secret-value\n{MissionReviewParser.PassMarker}",
+            string.Empty,
+            now,
+            DateTimeOffset.UtcNow);
+        await store.SaveMissionReviewReceiptAsync(review);
 
         var loadedWorkspace = await store.GetMissionWorkspaceAsync(mission.Id);
         var latestAttempt = await store.GetLatestMissionAttemptAsync(mission.Id);
         var latestReceipt = await store.GetLatestMissionVerificationReceiptAsync(mission.Id);
+        var latestReview = await store.GetLatestMissionReviewReceiptAsync(mission.Id);
 
         Assert.Equal(savedWorkspace, loadedWorkspace);
         Assert.Equal(MissionAttemptStatus.Succeeded, completed.Status);
@@ -206,6 +220,9 @@ public sealed class FlytStateStoreTests : IDisposable
         Assert.NotNull(latestReceipt);
         Assert.Equal(["src/Change.cs"], latestReceipt.ChangedPaths);
         Assert.Contains(SensitiveDataRedactor.Replacement, latestReceipt.StandardOutput, StringComparison.Ordinal);
+        Assert.NotNull(latestReview);
+        Assert.Equal(MissionReviewVerdict.Pass, latestReview.Verdict);
+        Assert.DoesNotContain("secret-value", latestReview.StandardOutput, StringComparison.Ordinal);
     }
 
     [Fact]

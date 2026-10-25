@@ -37,8 +37,13 @@ public sealed class GitWorktreeManagerTests : IDisposable
 
         await File.WriteAllTextAsync(Path.Combine(created.WorktreePath, "change.txt"), "changed\n");
         var changedPaths = await manager.GetChangedPathsAsync(created);
+        var firstFingerprint = await manager.ComputeDiffFingerprintAsync(created, changedPaths);
+        await File.WriteAllTextAsync(Path.Combine(created.WorktreePath, "change.txt"), "changed again\n");
+        var secondFingerprint = await manager.ComputeDiffFingerprintAsync(created, changedPaths);
 
         Assert.Equal(["change.txt"], changedPaths);
+        Assert.Matches("^[0-9a-f]{64}$", firstFingerprint);
+        Assert.NotEqual(firstFingerprint, secondFingerprint);
     }
 
     public void Dispose()

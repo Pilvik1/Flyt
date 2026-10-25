@@ -13,4 +13,9 @@ public interface IMissionWorkspaceManager
     Task<string> GetHeadCommitAsync(
         MissionWorkspace workspace,
         CancellationToken cancellationToken = default);
+
+    Task<string> ComputeDiffFingerprintAsync(
+        MissionWorkspace workspace,
+        IReadOnlyList<string> changedPaths,
+        CancellationToken cancellationToken = default);
 }

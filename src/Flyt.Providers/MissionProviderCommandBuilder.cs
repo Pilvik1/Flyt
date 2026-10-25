@@ -8,7 +8,8 @@ public sealed record MissionProviderRequest(
     MissionPlan Plan,
     MissionWorkspace Workspace,
     bool ReadOnly,
-    int MaximumTurns = 20);
+    int MaximumTurns = 20,
+    string? AdditionalContext = null);
 
 public static class MissionProviderCommandBuilder
 {
@@ -77,6 +78,22 @@ public static class MissionProviderCommandBuilder
             ? "Review the current diff only. Do not edit files, commit, push, or change Git state."
             : "Work only inside the current worktree. Edit the minimum necessary files. Do not commit, push, merge, or create additional worktrees.");
         prompt.AppendLine("Do not claim success based on prose. Summarize changed files, remaining risks, and any blocker.");
+        if (request.ReadOnly)
+        {
+            prompt.AppendLine(
+                "End with exactly one verdict marker: "
+                + MissionReviewParser.PassMarker
+                + " or "
+                + MissionReviewParser.BlockMarker
+                + ".");
+        }
+
+        else if (!string.IsNullOrWhiteSpace(request.AdditionalContext))
+        {
+            prompt.AppendLine("Review feedback from the prior attempt:");
+            prompt.AppendLine(SensitiveDataRedactor.Redact(request.AdditionalContext));
+        }
+
         return prompt.ToString();
     }
 }

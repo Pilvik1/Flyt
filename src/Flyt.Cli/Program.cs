@@ -381,7 +381,15 @@ internal static partial class Program
         AnsiConsole.MarkupLine("[aqua]flyt mission show[/] --id ID");
         AnsiConsole.MarkupLine("[aqua]flyt mission approve[/] --id ID");
         AnsiConsole.MarkupLine(
-            "[aqua]flyt mission run[/] --id ID [[--provider claude|codex]] [[--timeout-minutes 90]]");
+            "[aqua]flyt mission run[/] --id ID [[--provider claude|codex]] "
+            + "[[--reviewer auto|claude|codex]] [[--timeout-minutes 90]]");
+        AnsiConsole.MarkupLine("[aqua]flyt mission recover[/] --id ID");
+        AnsiConsole.MarkupLine(
+            "[aqua]flyt mission retry[/] --id ID [[--provider claude|codex]] "
+            + "[[--reviewer auto|claude|codex]] [[--timeout-minutes 90]]");
+        AnsiConsole.MarkupLine(
+            "[aqua]flyt mission integrate[/] --id ID --commit-message TEXT "
+            + "[[--push]] [[--draft-pr]] [[--base main]]");
         AnsiConsole.MarkupLine("[aqua]flyt mission pause|resume|cancel[/] --id ID");
     }
 }

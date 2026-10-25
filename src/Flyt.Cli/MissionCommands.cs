@@ -27,6 +27,9 @@ internal static partial class Program
             "show" => await ShowMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "approve" => await ApproveMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "run" => await RunMissionExecutionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
+            "retry" => await RetryMissionExecutionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
+            "recover" => await RecoverMissionExecutionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
+            "integrate" => await IntegrateMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "pause" => await TransitionMissionAsync(
                 store,
                 args[1..],
@@ -162,6 +165,7 @@ internal static partial class Program
         var attempt = await store.GetLatestMissionAttemptAsync(id, cancellationToken).ConfigureAwait(false);
         var receipt = await store.GetLatestMissionVerificationReceiptAsync(id, cancellationToken)
             .ConfigureAwait(false);
+        var review = await store.GetLatestMissionReviewReceiptAsync(id, cancellationToken).ConfigureAwait(false);
         if (workspace is not null)
         {
             AnsiConsole.MarkupLine(
@@ -181,6 +185,13 @@ internal static partial class Program
             AnsiConsole.MarkupLine(
                 $"[grey]Verification[/] {(receipt.Passed ? "[green]passed[/]" : "[red]failed[/]")} "
                 + $"([grey]exit {receipt.ExitCode}[/], {receipt.ChangedPaths.Count} changed path(s))");
+        }
+
+        if (review is not null)
+        {
+            AnsiConsole.MarkupLine(
+                $"[grey]Review[/] {Markup.Escape(review.Provider.ToString())} / "
+                + Markup.Escape(review.Verdict.ToString()));
         }
 
         return 0;
@@ -220,15 +231,26 @@ internal static partial class Program
                 "Mission timeout must be between 1 and 720 minutes.");
         }
 
+        AgentProvider? reviewer = (GetOption(args, "--reviewer") ?? "auto").ToLowerInvariant() switch
+        {
+            "auto" => null,
+            "claude" => AgentProvider.Claude,
+            "codex" => AgentProvider.Codex,
+            var value => throw new ArgumentException(
+                $"Unsupported Mission reviewer '{value}'. Expected auto, claude, or codex."),
+        };
+
         var worktreeRoot = Path.Combine(StatePaths.StateDirectory, "missions");
         var coordinator = new MissionExecutionCoordinator(
             store,
             new GitWorktreeManager(CommandExecutor, worktreeRoot),
+            new MissionWorkspaceSafetyScanner(),
             CommandExecutor);
         var outcome = await coordinator.RunAsync(
             id,
             provider,
             TimeSpan.FromMinutes(timeoutMinutes),
+            reviewer,
             cancellationToken).ConfigureAwait(false);
 
         PrintMission(outcome.Mission);
@@ -241,6 +263,13 @@ internal static partial class Program
                 $"[grey]Verification[/] {(outcome.Verification.Passed ? "[green]passed[/]" : "[red]failed[/]")}");
         }
 
+        if (outcome.Review is not null)
+        {
+            AnsiConsole.MarkupLine(
+                $"[grey]Review[/] {Markup.Escape(outcome.Review.Provider.ToString())} / "
+                + Markup.Escape(outcome.Review.Verdict.ToString()));
+        }
+
         if (outcome.Mission.State == MissionState.Integrating)
         {
             AnsiConsole.MarkupLine(
@@ -249,6 +278,89 @@ internal static partial class Program
         }
 
         return 2;
+    }
+
+    private static async Task<int> RecoverMissionExecutionAsync(
+        FlytStateStore store,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        var id = ParseMissionId(RequireOption(args, "--id"));
+        var coordinator = new MissionExecutionCoordinator(
+            store,
+            new GitWorktreeManager(CommandExecutor, Path.Combine(StatePaths.StateDirectory, "missions")),
+            new MissionWorkspaceSafetyScanner(),
+            CommandExecutor);
+        var outcome = await coordinator.RecoverAsync(id, cancellationToken).ConfigureAwait(false);
+        PrintMission(outcome.Mission);
+        AnsiConsole.MarkupLine(
+            "[yellow]Recovered conservatively.[/] No provider was relaunched; inspect the worktree before retrying.");
+        return 2;
+    }
+
+    private static async Task<int> RetryMissionExecutionAsync(
+        FlytStateStore store,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        var id = ParseMissionId(RequireOption(args, "--id"));
+        var mission = await store.GetMissionAsync(id, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Mission {id:D} was not found.");
+        if (mission.State != MissionState.Blocked)
+        {
+            throw new InvalidOperationException(
+                $"Only a Blocked Mission can retry; current state is {mission.State}.");
+        }
+
+        var attempts = await store.GetMissionAttemptsAsync(id, cancellationToken).ConfigureAwait(false);
+        var policy = AutonomyPolicy.Parse(mission.Profile);
+        if (attempts.Count >= policy.MaxFixLoops + 1)
+        {
+            throw new InvalidOperationException(
+                $"Mission reached the {policy.Name} profile limit of {policy.MaxFixLoops + 1} provider attempt(s).");
+        }
+
+        await store.TransitionMissionAsync(
+            id,
+            MissionState.Planning,
+            $"Operator approved retry {attempts.Count + 1} of {policy.MaxFixLoops + 1}.",
+            cancellationToken).ConfigureAwait(false);
+        return await RunMissionExecutionAsync(store, args, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<int> IntegrateMissionAsync(
+        FlytStateStore store,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        var id = ParseMissionId(RequireOption(args, "--id"));
+        var coordinator = new MissionIntegrationCoordinator(
+            store,
+            new GitWorktreeManager(CommandExecutor, Path.Combine(StatePaths.StateDirectory, "missions")),
+            new MissionWorkspaceSafetyScanner(),
+            CommandExecutor);
+        var result = await coordinator.PrepareAsync(
+            id,
+            RequireOption(args, "--commit-message"),
+            HasFlag(args, "--push"),
+            HasFlag(args, "--draft-pr"),
+            GetOption(args, "--base") ?? "main",
+            cancellationToken).ConfigureAwait(false);
+
+        PrintMission(result.Mission);
+        AnsiConsole.MarkupLine($"[green]Commit:[/] {Markup.Escape(result.Commit)}");
+        if (result.Pushed)
+        {
+            AnsiConsole.MarkupLine("[green]Branch pushed.[/]");
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.PullRequestUrl))
+        {
+            AnsiConsole.MarkupLine($"[green]Draft PR:[/] {Markup.Escape(result.PullRequestUrl)}");
+        }
+
+        AnsiConsole.MarkupLine("[yellow]Merge remains manual.[/]");
+        return 0;
     }
 
     private static async Task<int> TransitionMissionAsync(

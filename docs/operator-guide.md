@@ -284,11 +284,41 @@ flyt mission plan --id <id> `
   --steps "implement|independent review|verify" `
   --verify "dotnet test"
 flyt mission approve --id <id>
+flyt mission run --id <id> --provider claude --reviewer codex
 flyt mission show --id <id>
 ```
 
-A Mission cannot be approved before its plan is persisted. Pause, resume, and
-cancel use `flyt mission pause|resume|cancel --id <id>`.
+A Mission cannot be approved before its plan is persisted. `run` creates an isolated
+builder worktree, launches one bounded provider, requires a real Git diff, runs an
+independent read-only review, executes the approved verification command without a
+shell, persists evidence, and stops at `Integrating`.
+
+If Flyt or the provider is interrupted, recover conservatively:
+
+```powershell
+flyt mission recover --id <id>
+flyt mission show --id <id>
+```
+
+Recovery never silently relaunches a writer. It preserves the worktree and moves the
+Mission to `Blocked`. After reviewing the evidence, an operator can run a bounded fix
+attempt:
+
+```powershell
+flyt mission retry --id <id> --provider claude --reviewer codex
+```
+
+Once review and verification pass, integration remains an explicit operator action:
+
+```powershell
+flyt mission integrate --id <id> --commit-message "feat: add CSV import"
+flyt mission integrate --id <id> --commit-message "feat: add CSV import" `
+  --push --draft-pr --base main
+```
+
+Before committing, Flyt rechecks changed paths, the content-bound diff fingerprint,
+the current plan approval, and the safety scan. It can create a draft PR; it never
+merges it. Pause, resume, and cancel use `flyt mission pause|resume|cancel --id <id>`.
 
 ## Command finder
 

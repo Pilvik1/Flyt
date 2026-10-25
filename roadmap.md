@@ -41,27 +41,28 @@
 Execution order, constraints, and proof gates are defined in
 [`docs/mission-mode-development-plan.md`](docs/mission-mode-development-plan.md).
 
-- [ ] Structured brief and task graph schemas.
+- [x] Structured brief schema and sequential persisted task plan (parallel DAG is post-beta).
 - [x] Persisted acceptance plan and enforced operator approval.
-- [ ] Claude structured adapter.
+- [x] Bounded Claude print-mode JSON adapter.
 - [ ] Codex app-server adapter.
-- [ ] Git worktree manager and ownership rules.
-- [ ] Hash-bound approval for repository setup and teardown hooks.
+- [x] Bounded Codex exec JSON adapter (app-server remains future work).
+- [x] Git worktree manager and ownership rules.
+- [x] Hash-bound approval for repository setup and execution.
 - [x] Pause/resume/cancel with exact prior-state recovery.
-- [ ] Recovery of interrupted Mission provider execution (Desk recovery is shipped).
+- [x] Conservative recovery of interrupted Mission execution.
 
 ## Phase 4 — quality loop
 
-- [ ] Build → review → verify → fix → integrate workflow.
-- [ ] Structured review and evidence receipts.
-- [ ] Bounded retries and time/provider-failure ceilings.
-- [ ] Secret and accidental-file checks.
-- [ ] Push, draft PR, and gated automatic merge policy.
+- [x] Build → review → verify → bounded fix → integrate workflow.
+- [x] Structured review and evidence receipts.
+- [x] Bounded retries and time/provider-failure ceilings.
+- [x] Secret and accidental-file checks.
+- [x] Operator-approved commit, push, and draft PR; merge remains manual by policy.
 
 ## Phase 5 — daily driver
 
 - [x] Checksum-verified Windows installer supporting private and public releases.
-- [ ] Failure-injection tests.
+- [x] Failure-injection tests for timeout, no-diff, stale evidence, and interrupted execution.
 - [x] Best-effort secret redaction and bounded failure-receipt retention.
 - [x] MIT license, privacy/security docs, SBOM, and contribution surface.
 - [x] Polished terminal theme with stable role colors and task labels.
