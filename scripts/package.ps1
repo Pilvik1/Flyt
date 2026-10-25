@@ -27,13 +27,14 @@ if ([string]$moduleManifest.ModuleVersion -ne $version) {
 $artifactRoot = [IO.Path]::GetFullPath($OutputDirectory)
 $publishDirectory = Join-Path $artifactRoot "publish-$Runtime"
 $stagingDirectory = Join-Path $artifactRoot "staging-$Runtime"
+$manifestDirectory = Join-Path $artifactRoot "sbom-$Runtime"
 $packageName = "Flyt-v$version-$Runtime.zip"
 $packagePath = Join-Path $artifactRoot $packageName
 $checksumPath = "$packagePath.sha256"
 $sbomPath = Join-Path $artifactRoot "Flyt-v$version-$Runtime.spdx.json"
 
 New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
-foreach ($generatedPath in @($publishDirectory, $stagingDirectory)) {
+foreach ($generatedPath in @($publishDirectory, $stagingDirectory, $manifestDirectory)) {
     if (Test-Path -LiteralPath $generatedPath) {
         Remove-Item -LiteralPath $generatedPath -Recurse -Force
     }
@@ -85,6 +86,7 @@ foreach ($generatedFile in @($packagePath, $checksumPath, $sbomPath)) {
 dotnet tool run sbom-tool -- generate `
     -b $stagingDirectory `
     -bc $root `
+    -m $manifestDirectory `
     -pn Flyt `
     -pv $version `
     -ps 'Håkon Pilvik' `
@@ -93,10 +95,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "SBOM generation failed for $Runtime with exit code $LASTEXITCODE."
 }
 
-$generatedSbom = Join-Path $stagingDirectory '_manifest/spdx_2.2/manifest.spdx.json'
+$generatedSbom = Join-Path $manifestDirectory '_manifest/spdx_2.2/manifest.spdx.json'
 if (-not (Test-Path -LiteralPath $generatedSbom)) {
     throw "Generated SBOM not found at $generatedSbom."
 }
+$packagedSbomDirectory = Join-Path $stagingDirectory '_manifest/spdx_2.2'
+New-Item -ItemType Directory -Path $packagedSbomDirectory -Force | Out-Null
+Copy-Item -LiteralPath $generatedSbom -Destination (Join-Path $packagedSbomDirectory 'manifest.spdx.json')
 Copy-Item -LiteralPath $generatedSbom -Destination $sbomPath
 
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $packagePath -CompressionLevel Optimal
