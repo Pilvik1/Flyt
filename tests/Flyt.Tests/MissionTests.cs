@@ -71,4 +71,29 @@ public sealed class MissionTests
         var resumed = paused.TransitionTo(MissionState.Executing);
         Assert.Null(resumed.ResumeState);
     }
+
+    [Fact]
+    public void PlanFingerprint_IsStableAndContentBound()
+    {
+        var missionId = Guid.NewGuid();
+        var first = MissionPlan.Create(
+            missionId,
+            ["Tests pass", "Receipt exists"],
+            ["Build", "Verify"],
+            "dotnet test");
+        var equivalent = MissionPlan.Create(
+            missionId,
+            ["Tests pass", "Receipt exists"],
+            ["Build", "Verify"],
+            "dotnet test");
+        var changed = MissionPlan.Create(
+            missionId,
+            ["Tests pass", "Receipt exists"],
+            ["Build", "Verify"],
+            "dotnet test --no-restore");
+
+        Assert.Equal(first.ComputeFingerprint(), equivalent.ComputeFingerprint());
+        Assert.NotEqual(first.ComputeFingerprint(), changed.ComputeFingerprint());
+        Assert.Matches("^[0-9a-f]{64}$", first.ComputeFingerprint());
+    }
 }

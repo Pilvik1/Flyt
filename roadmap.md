@@ -38,6 +38,9 @@
 
 ## Phase 3 — Mission foundation
 
+Execution order, constraints, and proof gates are defined in
+[`docs/mission-mode-development-plan.md`](docs/mission-mode-development-plan.md).
+
 - [ ] Structured brief and task graph schemas.
 - [x] Persisted acceptance plan and enforced operator approval.
 - [ ] Claude structured adapter.

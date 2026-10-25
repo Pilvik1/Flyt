@@ -214,6 +214,18 @@ public sealed class FlytStateStore
                 """,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (version < 6)
+        {
+            await ApplyMigrationAsync(
+                connection,
+                6,
+                """
+                ALTER TABLE mission_approvals
+                    ADD COLUMN plan_fingerprint TEXT NOT NULL DEFAULT '';
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateMissionAsync(
@@ -485,17 +497,54 @@ public sealed class FlytStateStore
         {
             approval.Transaction = sqliteTransaction;
             approval.CommandText = """
-                INSERT INTO mission_approvals (mission_id, plan_version, decision, decided_at)
-                VALUES ($missionId, $planVersion, 'approved', $decidedAt);
+                INSERT INTO mission_approvals (
+                    mission_id, plan_version, plan_fingerprint, decision, decided_at
+                ) VALUES (
+                    $missionId, $planVersion, $planFingerprint, 'approved', $decidedAt
+                );
                 """;
             approval.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
             approval.Parameters.AddWithValue("$planVersion", plan.Version);
+            approval.Parameters.AddWithValue("$planFingerprint", plan.ComputeFingerprint());
             approval.Parameters.AddWithValue("$decidedAt", FormatDate(updated.UpdatedAt));
             await approval.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return updated;
+    }
+
+    public async Task<ApprovedMissionPlan> RequireApprovedMissionPlanAsync(
+        Guid missionId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var mission = await GetMissionAsync(connection, transaction: null, missionId, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Mission {missionId:D} was not found.");
+
+        if (mission.State != MissionState.Planning)
+        {
+            throw new InvalidOperationException(
+                $"Mission execution requires Planning state; current state is {mission.State}.");
+        }
+
+        var plan = await GetMissionPlanAsync(connection, transaction: null, missionId, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("A persisted mission plan is required before execution.");
+        var approval = await GetLatestMissionApprovalAsync(connection, missionId, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The current mission plan has not been approved.");
+        var fingerprint = plan.ComputeFingerprint();
+
+        if (approval.PlanVersion != plan.Version
+            || !string.Equals(approval.PlanFingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The current mission plan does not match its approval. Review and approve it again.");
+        }
+
+        return new ApprovedMissionPlan(mission, plan, approval);
     }
 
     public async Task<IReadOnlyList<MissionEvent>> GetEventsAsync(
@@ -1209,7 +1258,7 @@ public sealed class FlytStateStore
 
     private static async Task<Mission?> GetMissionAsync(
         SqliteConnection connection,
-        SqliteTransaction transaction,
+        SqliteTransaction? transaction,
         Guid missionId,
         CancellationToken cancellationToken)
     {
@@ -1226,6 +1275,35 @@ public sealed class FlytStateStore
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
             ? ReadMission(reader)
             : null;
+    }
+
+    private static async Task<MissionApproval?> GetLatestMissionApprovalAsync(
+        SqliteConnection connection,
+        Guid missionId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT sequence, mission_id, plan_version, plan_fingerprint, decided_at
+            FROM mission_approvals
+            WHERE mission_id = $missionId AND decision = 'approved'
+            ORDER BY sequence DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return new MissionApproval(
+            reader.GetInt64(0),
+            Guid.Parse(reader.GetString(1)),
+            reader.GetInt32(2),
+            reader.GetString(3),
+            ParseDate(reader.GetString(4)));
     }
 
     private static async Task<MissionPlan?> GetMissionPlanAsync(
