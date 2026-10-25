@@ -320,6 +320,53 @@ Before committing, Flyt rechecks changed paths, the content-bound diff fingerpri
 the current plan approval, and the safety scan. It can create a draft PR; it never
 merges it. Pause, resume, and cancel use `flyt mission pause|resume|cancel --id <id>`.
 
+### Codex Mission transport
+
+Codex Missions use `codex app-server --listen stdio://` by default. Flyt initializes
+the server, starts a thread in the isolated worktree, starts one turn, and waits for a
+typed `turn/completed` event. Thread/turn IDs and the provider protocol/version are
+stored with the attempt. An invisible approval or input request blocks the Mission;
+Flyt does not guess an answer. Cancellation sends `turn/interrupt` before the process
+is terminated.
+
+For an older Codex installation that does not expose app-server, select the existing
+bounded fallback explicitly before starting Flyt:
+
+```powershell
+$env:FLYT_CODEX_TRANSPORT = 'exec'
+```
+
+Do not make fallback automatic: silently starting a second writer after an uncertain
+app-server failure would violate Mission ownership.
+
+### Mission pilot
+
+Record each manual baseline before its matching Mission. Intervention reasons are a
+pipe-separated list of unplanned corrections, extra prompts, provider restarts,
+terminal rescues, or evidence overrides. Required plan and integration approvals do
+not count.
+
+```powershell
+flyt mission pilot record --mode baseline --scenario docs `
+  --duration-minutes 35 --passed `
+  --interventions "extra prompt|manual test repair" `
+  --provider-metadata "Claude Code 2.x; Codex 0.x"
+
+flyt mission pilot record --mode mission --scenario docs --id <completed-mission-id>
+flyt mission pilot record --mode mission --scenario recovery `
+  --id <completed-mission-id> --failure-injected `
+  --interventions "operator inspected recovered worktree"
+
+flyt mission pilot report
+flyt mission pilot report --json
+```
+
+The report stays incomplete until five baseline/Mission scenario pairs run on Windows
+across at least 14 days, every Mission has complete evidence, one injected failure proves
+recovery, and total unplanned interventions fall by at least 50%. A zero-intervention
+baseline is reported as not measurable rather than converted into consultant-grade
+arithmetic.
+
 ## Command finder
 
 | I want to… | Command |

@@ -159,8 +159,12 @@ output are persisted locally. Flyt blocks stale approvals, empty diffs, changed 
 known secret patterns, ambiguous reviews, and interrupted runs. It can prepare a commit,
 push, and draft PR only through an explicit `mission integrate` command; merge stays manual.
 
-This is still beta software. The remaining proof is target-host failure injection and five
-real Missions across two weeks, tracked in the [roadmap](roadmap.md).
+Codex Missions use the typed app-server protocol by default. The older bounded
+`codex exec` path remains available through `FLYT_CODEX_TRANSPORT=exec` while the target
+Windows host finishes live acceptance.
+
+This is still beta software. The remaining proof is one live app-server turn on the target
+Windows host plus five real Missions across two weeks, tracked in the [roadmap](roadmap.md).
 
 ## Architecture
 

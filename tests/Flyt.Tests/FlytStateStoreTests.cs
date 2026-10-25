@@ -177,7 +177,8 @@ public sealed class FlytStateStoreTests : IDisposable
             MissionAttemptStatus.Succeeded,
             0,
             "token=secret-value\nDone",
-            string.Empty);
+            string.Empty,
+            new MissionProviderMetadata("codex-app-server-v2", "codex 1.0", "thread-1", "turn-1"));
         var receipt = new MissionVerificationReceipt(
             Guid.NewGuid(),
             mission.Id,
@@ -217,12 +218,50 @@ public sealed class FlytStateStoreTests : IDisposable
         Assert.Equal(completed, latestAttempt);
         Assert.Contains(SensitiveDataRedactor.Replacement, completed.StandardOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("secret-value", completed.StandardOutput, StringComparison.Ordinal);
+        Assert.Equal("codex-app-server-v2", completed.ProviderProtocol);
+        Assert.Equal("thread-1", completed.ProviderSessionId);
+        Assert.Equal("turn-1", completed.ProviderTurnId);
         Assert.NotNull(latestReceipt);
         Assert.Equal(["src/Change.cs"], latestReceipt.ChangedPaths);
         Assert.Contains(SensitiveDataRedactor.Replacement, latestReceipt.StandardOutput, StringComparison.Ordinal);
         Assert.NotNull(latestReview);
         Assert.Equal(MissionReviewVerdict.Pass, latestReview.Verdict);
         Assert.DoesNotContain("secret-value", latestReview.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PilotReceipts_PersistRedactedEvidenceAndProduceReportInput()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "pilot.db"));
+        await store.InitializeAsync();
+        var now = DateTimeOffset.UtcNow;
+        var receipt = new MissionPilotReceipt(
+            Guid.NewGuid(),
+            MissionId: null,
+            "docs",
+            MissionPilotMode.Baseline,
+            Passed: true,
+            EvidenceComplete: true,
+            FailureInjected: false,
+            InterventionCount: 1,
+            ["token=secret-value"],
+            AttemptCount: 0,
+            ReviewBlockCount: 0,
+            RecoveryCount: 0,
+            DurationMinutes: 15,
+            "Windows 11",
+            "Authorization: Bearer abcdefghijklmnop",
+            now.AddMinutes(-15),
+            now,
+            now);
+
+        await store.SaveMissionPilotReceiptAsync(receipt);
+        var loaded = Assert.Single(await store.ListMissionPilotReceiptsAsync());
+
+        Assert.Equal(receipt.Id, loaded.Id);
+        Assert.Contains(SensitiveDataRedactor.Replacement, Assert.Single(loaded.InterventionReasons));
+        Assert.DoesNotContain("secret-value", Assert.Single(loaded.InterventionReasons), StringComparison.Ordinal);
+        Assert.Contains(SensitiveDataRedactor.Replacement, loaded.ProviderMetadata);
     }
 
     [Fact]

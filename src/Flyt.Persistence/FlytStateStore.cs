@@ -327,6 +327,50 @@ public sealed class FlytStateStore
                 """,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (version < 10)
+        {
+            await ApplyMigrationAsync(
+                connection,
+                10,
+                """
+                ALTER TABLE mission_attempts ADD COLUMN provider_protocol TEXT NULL;
+                ALTER TABLE mission_attempts ADD COLUMN provider_version TEXT NULL;
+                ALTER TABLE mission_attempts ADD COLUMN provider_session_id TEXT NULL;
+                ALTER TABLE mission_attempts ADD COLUMN provider_turn_id TEXT NULL;
+
+                ALTER TABLE mission_review_receipts ADD COLUMN provider_protocol TEXT NULL;
+                ALTER TABLE mission_review_receipts ADD COLUMN provider_version TEXT NULL;
+                ALTER TABLE mission_review_receipts ADD COLUMN provider_session_id TEXT NULL;
+                ALTER TABLE mission_review_receipts ADD COLUMN provider_turn_id TEXT NULL;
+
+                CREATE TABLE mission_pilot_receipts (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NULL,
+                    scenario TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    passed INTEGER NOT NULL,
+                    evidence_complete INTEGER NOT NULL,
+                    failure_injected INTEGER NOT NULL,
+                    intervention_count INTEGER NOT NULL,
+                    intervention_reasons_json TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL,
+                    review_block_count INTEGER NOT NULL,
+                    recovery_count INTEGER NOT NULL,
+                    duration_minutes REAL NOT NULL,
+                    operating_system TEXT NOT NULL,
+                    provider_metadata TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    FOREIGN KEY (mission_id) REFERENCES missions(id)
+                );
+
+                CREATE INDEX ix_mission_pilot_mode_scenario_time
+                    ON mission_pilot_receipts(mode, scenario, recorded_at DESC);
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateMissionAsync(
@@ -813,6 +857,7 @@ public sealed class FlytStateStore
         int? exitCode,
         string standardOutput,
         string standardError,
+        MissionProviderMetadata? providerMetadata = null,
         CancellationToken cancellationToken = default)
     {
         if (status == MissionAttemptStatus.Running)
@@ -829,6 +874,10 @@ public sealed class FlytStateStore
                 exit_code = $exitCode,
                 standard_output = $standardOutput,
                 standard_error = $standardError,
+                provider_protocol = $providerProtocol,
+                provider_version = $providerVersion,
+                provider_session_id = $providerSessionId,
+                provider_turn_id = $providerTurnId,
                 completed_at = $completedAt
             WHERE id = $id AND status = 'Running';
             """;
@@ -836,6 +885,10 @@ public sealed class FlytStateStore
         command.Parameters.AddWithValue("$exitCode", exitCode ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$standardOutput", SensitiveDataRedactor.Redact(standardOutput));
         command.Parameters.AddWithValue("$standardError", SensitiveDataRedactor.Redact(standardError));
+        command.Parameters.AddWithValue("$providerProtocol", providerMetadata?.Protocol ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$providerVersion", providerMetadata?.Version ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$providerSessionId", providerMetadata?.SessionId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$providerTurnId", providerMetadata?.TurnId ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$completedAt", FormatDate(completedAt));
         command.Parameters.AddWithValue("$id", attemptId.ToString("D"));
         var rows = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -857,7 +910,8 @@ public sealed class FlytStateStore
         command.CommandText = """
             SELECT id, mission_id, attempt_number, provider, status,
                    plan_version, plan_fingerprint, exit_code,
-                   standard_output, standard_error, started_at, completed_at
+                   standard_output, standard_error, started_at, completed_at,
+                   provider_protocol, provider_version, provider_session_id, provider_turn_id
             FROM mission_attempts
             WHERE mission_id = $missionId
             ORDER BY attempt_number DESC
@@ -880,7 +934,8 @@ public sealed class FlytStateStore
         command.CommandText = """
             SELECT id, mission_id, attempt_number, provider, status,
                    plan_version, plan_fingerprint, exit_code,
-                   standard_output, standard_error, started_at, completed_at
+                   standard_output, standard_error, started_at, completed_at,
+                   provider_protocol, provider_version, provider_session_id, provider_turn_id
             FROM mission_attempts
             WHERE mission_id = $missionId
             ORDER BY attempt_number;
@@ -979,10 +1034,12 @@ public sealed class FlytStateStore
         command.CommandText = """
             INSERT INTO mission_review_receipts (
                 id, mission_id, attempt_id, provider, verdict, exit_code,
-                standard_output, standard_error, started_at, completed_at
+                standard_output, standard_error, started_at, completed_at,
+                provider_protocol, provider_version, provider_session_id, provider_turn_id
             ) VALUES (
                 $id, $missionId, $attemptId, $provider, $verdict, $exitCode,
-                $standardOutput, $standardError, $startedAt, $completedAt
+                $standardOutput, $standardError, $startedAt, $completedAt,
+                $providerProtocol, $providerVersion, $providerSessionId, $providerTurnId
             );
             """;
         command.Parameters.AddWithValue("$id", receipt.Id.ToString("D"));
@@ -995,6 +1052,10 @@ public sealed class FlytStateStore
         command.Parameters.AddWithValue("$standardError", SensitiveDataRedactor.Redact(receipt.StandardError));
         command.Parameters.AddWithValue("$startedAt", FormatDate(receipt.StartedAt));
         command.Parameters.AddWithValue("$completedAt", FormatDate(receipt.CompletedAt));
+        command.Parameters.AddWithValue("$providerProtocol", receipt.ProviderProtocol ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$providerVersion", receipt.ProviderVersion ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$providerSessionId", receipt.ProviderSessionId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$providerTurnId", receipt.ProviderTurnId ?? (object)DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -1006,7 +1067,8 @@ public sealed class FlytStateStore
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, mission_id, attempt_id, provider, verdict, exit_code,
-                   standard_output, standard_error, started_at, completed_at
+                   standard_output, standard_error, started_at, completed_at,
+                   provider_protocol, provider_version, provider_session_id, provider_turn_id
             FROM mission_review_receipts
             WHERE mission_id = $missionId
             ORDER BY completed_at DESC
@@ -1019,17 +1081,133 @@ public sealed class FlytStateStore
             return null;
         }
 
-        return new MissionReviewReceipt(
-            Guid.Parse(reader.GetString(0)),
-            Guid.Parse(reader.GetString(1)),
-            Guid.Parse(reader.GetString(2)),
-            Enum.Parse<AgentProvider>(reader.GetString(3)),
-            Enum.Parse<MissionReviewVerdict>(reader.GetString(4)),
-            reader.IsDBNull(5) ? null : reader.GetInt32(5),
-            reader.GetString(6),
-            reader.GetString(7),
-            ParseDate(reader.GetString(8)),
-            ParseDate(reader.GetString(9)));
+        return ReadMissionReviewReceipt(reader);
+    }
+
+    public async Task<IReadOnlyList<MissionReviewReceipt>> GetMissionReviewReceiptsAsync(
+        Guid missionId,
+        CancellationToken cancellationToken = default)
+    {
+        var receipts = new List<MissionReviewReceipt>();
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, mission_id, attempt_id, provider, verdict, exit_code,
+                   standard_output, standard_error, started_at, completed_at,
+                   provider_protocol, provider_version, provider_session_id, provider_turn_id
+            FROM mission_review_receipts
+            WHERE mission_id = $missionId
+            ORDER BY completed_at;
+            """;
+        command.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            receipts.Add(ReadMissionReviewReceipt(reader));
+        }
+
+        return receipts;
+    }
+
+    public async Task SaveMissionPilotReceiptAsync(
+        MissionPilotReceipt receipt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+        if (string.IsNullOrWhiteSpace(receipt.Scenario))
+        {
+            throw new ArgumentException("Pilot scenario is required.", nameof(receipt));
+        }
+
+        if (receipt.InterventionCount < 0 || receipt.DurationMinutes < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(receipt), "Pilot measurements cannot be negative.");
+        }
+
+        if (receipt.InterventionCount != receipt.InterventionReasons.Count)
+        {
+            throw new ArgumentException(
+                "Pilot intervention count must match the number of recorded reasons.",
+                nameof(receipt));
+        }
+
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO mission_pilot_receipts (
+                id, mission_id, scenario, mode, passed, evidence_complete,
+                failure_injected, intervention_count, intervention_reasons_json,
+                attempt_count, review_block_count, recovery_count, duration_minutes,
+                operating_system, provider_metadata, started_at, completed_at, recorded_at
+            ) VALUES (
+                $id, $missionId, $scenario, $mode, $passed, $evidenceComplete,
+                $failureInjected, $interventionCount, $interventionReasons,
+                $attemptCount, $reviewBlockCount, $recoveryCount, $durationMinutes,
+                $operatingSystem, $providerMetadata, $startedAt, $completedAt, $recordedAt
+            );
+            """;
+        command.Parameters.AddWithValue("$id", receipt.Id.ToString("D"));
+        command.Parameters.AddWithValue("$missionId", receipt.MissionId?.ToString("D") ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$scenario", receipt.Scenario.Trim());
+        command.Parameters.AddWithValue("$mode", receipt.Mode.ToString());
+        command.Parameters.AddWithValue("$passed", receipt.Passed ? 1 : 0);
+        command.Parameters.AddWithValue("$evidenceComplete", receipt.EvidenceComplete ? 1 : 0);
+        command.Parameters.AddWithValue("$failureInjected", receipt.FailureInjected ? 1 : 0);
+        command.Parameters.AddWithValue("$interventionCount", receipt.InterventionCount);
+        command.Parameters.AddWithValue(
+            "$interventionReasons",
+            JsonSerializer.Serialize(receipt.InterventionReasons.Select(SensitiveDataRedactor.Redact)));
+        command.Parameters.AddWithValue("$attemptCount", receipt.AttemptCount);
+        command.Parameters.AddWithValue("$reviewBlockCount", receipt.ReviewBlockCount);
+        command.Parameters.AddWithValue("$recoveryCount", receipt.RecoveryCount);
+        command.Parameters.AddWithValue("$durationMinutes", receipt.DurationMinutes);
+        command.Parameters.AddWithValue("$operatingSystem", receipt.OperatingSystem);
+        command.Parameters.AddWithValue("$providerMetadata", SensitiveDataRedactor.Redact(receipt.ProviderMetadata));
+        command.Parameters.AddWithValue("$startedAt", FormatDate(receipt.StartedAt));
+        command.Parameters.AddWithValue("$completedAt", FormatDate(receipt.CompletedAt));
+        command.Parameters.AddWithValue("$recordedAt", FormatDate(receipt.RecordedAt));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<MissionPilotReceipt>> ListMissionPilotReceiptsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var receipts = new List<MissionPilotReceipt>();
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, mission_id, scenario, mode, passed, evidence_complete,
+                   failure_injected, intervention_count, intervention_reasons_json,
+                   attempt_count, review_block_count, recovery_count, duration_minutes,
+                   operating_system, provider_metadata, started_at, completed_at, recorded_at
+            FROM mission_pilot_receipts
+            ORDER BY recorded_at;
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            receipts.Add(new MissionPilotReceipt(
+                Guid.Parse(reader.GetString(0)),
+                reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1)),
+                reader.GetString(2),
+                Enum.Parse<MissionPilotMode>(reader.GetString(3)),
+                reader.GetInt32(4) == 1,
+                reader.GetInt32(5) == 1,
+                reader.GetInt32(6) == 1,
+                reader.GetInt32(7),
+                JsonSerializer.Deserialize<string[]>(reader.GetString(8)) ?? [],
+                reader.GetInt32(9),
+                reader.GetInt32(10),
+                reader.GetInt32(11),
+                reader.GetDouble(12),
+                reader.GetString(13),
+                reader.GetString(14),
+                ParseDate(reader.GetString(15)),
+                ParseDate(reader.GetString(16)),
+                ParseDate(reader.GetString(17))));
+        }
+
+        return receipts;
     }
 
     public async Task<Desk> SaveDeskAsync(
@@ -1833,7 +2011,8 @@ public sealed class FlytStateStore
         command.CommandText = """
             SELECT id, mission_id, attempt_number, provider, status,
                    plan_version, plan_fingerprint, exit_code,
-                   standard_output, standard_error, started_at, completed_at
+                   standard_output, standard_error, started_at, completed_at,
+                   provider_protocol, provider_version, provider_session_id, provider_turn_id
             FROM mission_attempts
             WHERE id = $id;
             """;
@@ -1856,7 +2035,27 @@ public sealed class FlytStateStore
         reader.GetString(8),
         reader.GetString(9),
         ParseDate(reader.GetString(10)),
-        reader.IsDBNull(11) ? null : ParseDate(reader.GetString(11)));
+        reader.IsDBNull(11) ? null : ParseDate(reader.GetString(11)),
+        reader.IsDBNull(12) ? null : reader.GetString(12),
+        reader.IsDBNull(13) ? null : reader.GetString(13),
+        reader.IsDBNull(14) ? null : reader.GetString(14),
+        reader.IsDBNull(15) ? null : reader.GetString(15));
+
+    private static MissionReviewReceipt ReadMissionReviewReceipt(SqliteDataReader reader) => new(
+        Guid.Parse(reader.GetString(0)),
+        Guid.Parse(reader.GetString(1)),
+        Guid.Parse(reader.GetString(2)),
+        Enum.Parse<AgentProvider>(reader.GetString(3)),
+        Enum.Parse<MissionReviewVerdict>(reader.GetString(4)),
+        reader.IsDBNull(5) ? null : reader.GetInt32(5),
+        reader.GetString(6),
+        reader.GetString(7),
+        ParseDate(reader.GetString(8)),
+        ParseDate(reader.GetString(9)),
+        reader.IsDBNull(10) ? null : reader.GetString(10),
+        reader.IsDBNull(11) ? null : reader.GetString(11),
+        reader.IsDBNull(12) ? null : reader.GetString(12),
+        reader.IsDBNull(13) ? null : reader.GetString(13));
 
     private static async Task<Desk?> GetDeskAsync(
         SqliteConnection connection,

@@ -16,8 +16,12 @@ internal sealed class MissionExecutionCoordinator(
     FlytStateStore store,
     IMissionWorkspaceManager workspaceManager,
     IMissionSafetyScanner safetyScanner,
-    ICommandExecutor executor)
+    ICommandExecutor executor,
+    IMissionProviderRunner? missionProviderRunner = null)
 {
+    private readonly IMissionProviderRunner _missionProviderRunner =
+        missionProviderRunner ?? new CommandMissionProviderRunner(executor);
+
     public async Task<MissionRunOutcome> RunAsync(
         Guid missionId,
         AgentProvider provider,
@@ -62,20 +66,21 @@ internal sealed class MissionExecutionCoordinator(
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
 
-        CommandResult providerResult;
+        MissionProviderRunResult providerResult;
         try
         {
-            var providerCommand = MissionProviderCommandBuilder.Build(
+            var providerRequest = new MissionProviderRequest(
+                executing,
+                approved.Plan,
+                workspace,
+                ReadOnly: false,
+                AdditionalContext: priorReview?.Verdict == MissionReviewVerdict.Pass
+                    ? null
+                    : priorReview?.StandardOutput);
+            providerResult = await _missionProviderRunner.RunAsync(
                 provider,
-                new MissionProviderRequest(
-                    executing,
-                    approved.Plan,
-                    workspace,
-                    ReadOnly: false,
-                    AdditionalContext: priorReview?.Verdict == MissionReviewVerdict.Pass
-                        ? null
-                        : priorReview?.StandardOutput));
-            providerResult = await executor.RunAsync(providerCommand, timeoutSource.Token).ConfigureAwait(false);
+                providerRequest,
+                timeoutSource.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -101,7 +106,7 @@ internal sealed class MissionExecutionCoordinator(
                 exitCode: null,
                 string.Empty,
                 "Provider execution was cancelled.",
-                CancellationToken.None).ConfigureAwait(false);
+                cancellationToken: CancellationToken.None).ConfigureAwait(false);
             throw;
         }
         catch (Exception exception)
@@ -129,7 +134,8 @@ internal sealed class MissionExecutionCoordinator(
                 providerResult.ExitCode,
                 providerResult.StandardOutput,
                 providerResult.StandardError,
-                $"Provider exited with code {providerResult.ExitCode}.").ConfigureAwait(false);
+                $"Provider exited with code {providerResult.ExitCode}.",
+                providerResult.Metadata).ConfigureAwait(false);
             return new MissionRunOutcome(
                 failed.Mission,
                 workspace,
@@ -144,6 +150,7 @@ internal sealed class MissionExecutionCoordinator(
             providerResult.ExitCode,
             providerResult.StandardOutput,
             providerResult.StandardError,
+            providerResult.Metadata,
             CancellationToken.None).ConfigureAwait(false);
         var changedPaths = await workspaceManager.GetChangedPathsAsync(workspace, cancellationToken)
             .ConfigureAwait(false);
@@ -179,21 +186,35 @@ internal sealed class MissionExecutionCoordinator(
             $"Builder attempt {attempt.Number} produced {changedPaths.Count} changed path(s).",
             cancellationToken).ConfigureAwait(false);
         var reviewStartedAt = DateTimeOffset.UtcNow;
-        CommandResult reviewResult;
+        MissionProviderRunResult reviewResult;
         try
         {
-            var reviewCommand = MissionProviderCommandBuilder.Build(
+            var reviewRequest = new MissionProviderRequest(
+                reviewing,
+                approved.Plan,
+                workspace,
+                ReadOnly: true,
+                MaximumTurns: 10);
+            reviewResult = await _missionProviderRunner.RunAsync(
                 selectedReviewer,
-                new MissionProviderRequest(reviewing, approved.Plan, workspace, ReadOnly: true, MaximumTurns: 10));
-            reviewResult = await executor.RunAsync(reviewCommand, timeoutSource.Token).ConfigureAwait(false);
+                reviewRequest,
+                timeoutSource.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            reviewResult = new CommandResult(124, string.Empty, "Independent review exceeded the Mission timeout.");
+            reviewResult = new MissionProviderRunResult(
+                124,
+                string.Empty,
+                "Independent review exceeded the Mission timeout.",
+                new MissionProviderMetadata("unknown", null, null, null));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            reviewResult = new CommandResult(127, string.Empty, exception.Message);
+            reviewResult = new MissionProviderRunResult(
+                127,
+                string.Empty,
+                exception.Message,
+                new MissionProviderMetadata("unknown", null, null, null));
         }
 
         var verdict = reviewResult.IsSuccess
@@ -209,7 +230,11 @@ internal sealed class MissionExecutionCoordinator(
             reviewResult.StandardOutput,
             reviewResult.StandardError,
             reviewStartedAt,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            reviewResult.Metadata.Protocol,
+            reviewResult.Metadata.Version,
+            reviewResult.Metadata.SessionId,
+            reviewResult.Metadata.TurnId);
         await store.SaveMissionReviewReceiptAsync(reviewReceipt, CancellationToken.None).ConfigureAwait(false);
         if (reviewReceipt.Verdict != MissionReviewVerdict.Pass)
         {
@@ -311,7 +336,7 @@ internal sealed class MissionExecutionCoordinator(
                 exitCode: null,
                 string.Empty,
                 "Flyt restarted before the provider attempt recorded completion.",
-                CancellationToken.None).ConfigureAwait(false);
+                cancellationToken: CancellationToken.None).ConfigureAwait(false);
         }
 
         var changedPaths = await workspaceManager.GetChangedPathsAsync(workspace, cancellationToken)
@@ -335,7 +360,8 @@ internal sealed class MissionExecutionCoordinator(
         int? exitCode,
         string standardOutput,
         string standardError,
-        string detail)
+        string detail,
+        MissionProviderMetadata? metadata = null)
     {
         var completed = await store.CompleteMissionAttemptAsync(
             attempt.Id,
@@ -343,6 +369,7 @@ internal sealed class MissionExecutionCoordinator(
             exitCode,
             standardOutput,
             standardError,
+            metadata,
             CancellationToken.None).ConfigureAwait(false);
         var mission = await store.TransitionMissionAsync(
             attempt.MissionId,
