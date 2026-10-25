@@ -57,6 +57,11 @@ if (-not (Test-Path -LiteralPath $executable)) {
 
 Copy-Item -LiteralPath $executable -Destination (Join-Path $stagingDirectory 'flyt.exe')
 Copy-Item -LiteralPath $moduleSource -Destination (Join-Path $stagingDirectory 'Flyt') -Recurse
+$documentationDirectory = Join-Path $stagingDirectory 'docs'
+New-Item -ItemType Directory -Path $documentationDirectory -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $stagingDirectory 'README.md')
+Copy-Item -LiteralPath (Join-Path $root 'docs/operator-guide.md') -Destination $documentationDirectory
+Copy-Item -LiteralPath (Join-Path $root 'docs/desk-cockpit.md') -Destination $documentationDirectory
 $moduleTools = Join-Path $stagingDirectory 'Flyt/tools'
 New-Item -ItemType Directory -Path $moduleTools -Force | Out-Null
 Copy-Item -LiteralPath $executable -Destination (Join-Path $moduleTools 'flyt.exe')

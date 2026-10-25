@@ -172,6 +172,27 @@ try {
     if ($activeTitle -notmatch '^1\|reviewer · REVIEWER') {
         throw "Focused pane was not restored after reopen: $activeTitle"
     }
+
+    & psmux kill-session -t $DeskName
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not simulate unexpected psmux session loss.'
+    }
+    $missing = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
+    $missingDesk = @($missing.registered | Where-Object sessionName -eq $DeskName)
+    if ($missingDesk.Count -ne 1 -or $missingDesk[0].status -ne 'Missing') {
+        throw 'Unexpected psmux loss was not reconciled to Missing.'
+    }
+    Invoke-LiveFlyt desk reopen --name $DeskName | Write-Host
+    Start-Sleep -Milliseconds 750
+    $recoveredPaneIds = @(& psmux list-panes -t $DeskName -F '#{pane_id}')
+    if ($recoveredPaneIds.Count -ne 6 -or @($recoveredPaneIds | Sort-Object -Unique).Count -ne 6) {
+        throw 'Unexpected-loss recovery did not restore six unique pane IDs.'
+    }
+    $recoveredActiveTitle = (& psmux list-panes -t $DeskName -F '#{pane_active}|#{pane_title}' |
+        Where-Object { $_ -like '1|*' } | Out-String).Trim()
+    if ($recoveredActiveTitle -notmatch '^1\|reviewer · REVIEWER') {
+        throw "Unexpected-loss recovery did not restore focus: $recoveredActiveTitle"
+    }
 }
 finally {
     try {
@@ -182,4 +203,4 @@ finally {
     }
 }
 
-Write-Host 'Live Windows psmux proof passed: six panes, re-adoption, send, queue, two-stage handoff, history, stop, and reopen.'
+Write-Host 'Live Windows psmux proof passed: six panes, re-adoption, send, queue, handoffs, history, stop/reopen, and unexpected-loss recovery.'

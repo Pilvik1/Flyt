@@ -4,9 +4,12 @@ namespace Flyt.Terminal;
 
 public sealed class PsmuxClient(
     ICommandExecutor executor,
-    string executable = "psmux")
+    string executable = "psmux",
+    PsmuxPresentationProfile? presentation = null)
 {
     private readonly ICommandExecutor _executor = executor ?? throw new ArgumentNullException(nameof(executor));
+    private readonly PsmuxPresentationProfile _presentation = presentation
+        ?? new PsmuxPresentationProfile(ColorEnabled: true, UnicodeEnabled: true, HighContrast: false);
 
     public async Task<CommandResult> ProbeAsync(CancellationToken cancellationToken = default)
     {
@@ -248,15 +251,20 @@ public sealed class PsmuxClient(
             throw new ArgumentOutOfRangeException(nameof(panes), "Flyt supports one to six pane styles.");
         }
 
-        var style = "#[fg=white]#[bold]";
+        var style = _presentation.ColorEnabled ? "#[fg=white]#[bold]" : "#[bold]";
         for (var index = panes.Count - 1; index >= 0; index--)
         {
             var pane = panes[index];
-            var color = DeskPalette.NormalizeColor(pane.Session.Color);
-            style = $"#{{?#{{==:#{{pane_id}},{pane.PaneId}}},#[fg={color}]#[bold],{style}}}";
+            var selectedStyle = !_presentation.ColorEnabled
+                ? "#[bold]"
+                : _presentation.HighContrast
+                    ? "#[fg=white]#[bold]"
+                    : $"#[fg={DeskPalette.NormalizeColor(pane.Session.Color)}]#[bold]";
+            style = $"#{{?#{{==:#{{pane_id}},{pane.PaneId}}},{selectedStyle},{style}}}";
         }
 
-        var format = $" {style}#{{pane_index}} · #{{pane_title}} #[default]";
+        var separator = _presentation.UnicodeEnabled ? " · " : " | ";
+        var format = $" {style}#{{pane_index}}{separator}#{{pane_title}} #[default]";
         await RunRequiredAsync(
             new CommandInvocation(
                 executable,
@@ -275,18 +283,22 @@ public sealed class PsmuxClient(
         CancellationToken cancellationToken = default)
     {
         var normalizedName = PsmuxLayoutPlanner.NormalizeSessionName(sessionName);
-        var stateColor = activeStatus switch
-        {
-            DeskPaneStatus.NeedsInput => "yellow",
-            DeskPaneStatus.Failed => "red",
-            DeskPaneStatus.Done => "green",
-            _ => "white",
-        };
+        var stateColor = !_presentation.ColorEnabled || _presentation.HighContrast
+            ? "white"
+            : activeStatus switch
+            {
+                DeskPaneStatus.NeedsInput => "yellow",
+                DeskPaneStatus.Failed => "red",
+                DeskPaneStatus.Done => "green",
+                _ => "white",
+            };
         var options = new[]
         {
-            ("status-left", $"#[fg=cyan,bold] FLYT #[default] · {SanitizeFormat(workspaceLabel)} "),
-            ("status-right", $" {SanitizeFormat(summary)} · %H:%M "),
-            ("pane-active-border-style", $"fg={stateColor},bold"),
+            ("status-left", _presentation.ColorEnabled && !_presentation.HighContrast
+                ? $"#[fg=cyan,bold] FLYT #[default] · {PresentationText(workspaceLabel)} "
+                : $"#[bold] FLYT #[default] | {PresentationText(workspaceLabel)} "),
+            ("status-right", $" {PresentationText(summary)} {(_presentation.UnicodeEnabled ? "·" : "|")} %H:%M "),
+            ("pane-active-border-style", _presentation.ColorEnabled ? $"fg={stateColor},bold" : "bold"),
         };
 
         foreach (var (name, value) in options)
@@ -326,7 +338,7 @@ public sealed class PsmuxClient(
             PsmuxLayoutPlanner.TitleCommand(
                 executable,
                 paneId,
-                PsmuxLayoutPlanner.PaneTitle(session, status)),
+                PsmuxLayoutPlanner.PaneTitle(session, status, _presentation.UnicodeEnabled)),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -407,7 +419,7 @@ public sealed class PsmuxClient(
             PsmuxLayoutPlanner.TitleCommand(
                 executable,
                 paneId,
-                PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.Starting)),
+                PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.Starting, _presentation.UnicodeEnabled)),
             cancellationToken).ConfigureAwait(false);
         await RunRequiredAsync(
             PsmuxLayoutPlanner.SendCommand(
@@ -421,23 +433,27 @@ public sealed class PsmuxClient(
         string sessionName,
         CancellationToken cancellationToken)
     {
+        var colorEnabled = _presentation.ColorEnabled;
+        var highContrast = _presentation.HighContrast;
         var options = new[]
         {
             ("program-status", "on"),
             ("remain-on-exit", "failed"),
             ("pane-border-status", "top"),
-            ("pane-border-format", " #[bold]#{pane_index}#[default] · #{pane_title} "),
+            ("pane-border-format", _presentation.UnicodeEnabled
+                ? " #[bold]#{pane_index}#[default] · #{pane_title} "
+                : " #[bold]#{pane_index}#[default] | #{pane_title} "),
             ("pane-border-indicators", "both"),
             ("pane-border-lines", "heavy"),
-            ("pane-border-style", "fg=brightblack"),
-            ("pane-active-border-style", "fg=white,bold"),
-            ("window-style", "dim=12"),
+            ("pane-border-style", colorEnabled ? "fg=brightblack" : "default"),
+            ("pane-active-border-style", colorEnabled ? "fg=white,bold" : "bold"),
+            ("window-style", highContrast ? "dim=0" : "dim=12"),
             ("window-active-style", "dim=0"),
             ("status", "1"),
-            ("status-style", "bg=black,fg=white"),
-            ("status-left-style", "fg=cyan,bold"),
-            ("status-right-style", "fg=brightblack"),
-            ("popup-border-style", "fg=cyan,bold"),
+            ("status-style", colorEnabled ? "bg=black,fg=white" : "default"),
+            ("status-left-style", colorEnabled && !highContrast ? "fg=cyan,bold" : "bold"),
+            ("status-right-style", colorEnabled && !highContrast ? "fg=brightblack" : "default"),
+            ("popup-border-style", colorEnabled && !highContrast ? "fg=cyan,bold" : "bold"),
             ("popup-border-lines", "rounded"),
             ("status-interval", "1"),
         };
@@ -467,6 +483,14 @@ public sealed class PsmuxClient(
         .Replace("#", "", StringComparison.Ordinal)
         .Replace("\r", " ", StringComparison.Ordinal)
         .Replace("\n", " ", StringComparison.Ordinal);
+
+    private string PresentationText(string value)
+    {
+        var sanitized = SanitizeFormat(value);
+        return _presentation.UnicodeEnabled
+            ? sanitized
+            : sanitized.Replace("·", "|", StringComparison.Ordinal);
+    }
 
     private async Task<CommandResult> RunRequiredAsync(
         CommandInvocation invocation,

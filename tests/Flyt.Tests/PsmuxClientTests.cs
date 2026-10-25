@@ -91,6 +91,32 @@ public sealed class PsmuxClientTests
     }
 
     [Fact]
+    public async Task PresentationFallback_UsesAsciiAndRemovesRoleColoursAndDimming()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(
+            executor,
+            presentation: new PsmuxPresentationProfile(
+                ColorEnabled: false,
+                UnicodeEnabled: false,
+                HighContrast: true));
+        var session = Session(AgentProvider.Claude, "builder", "claude");
+
+        await client.ConfigureDeskPresentationAsync("daily", default);
+        await client.ConfigureRoleBorderFormatAsync("daily", [new DeskPaneHandle("%1", session)]);
+        await client.SetPanePresentationAsync("%1", session, DeskPaneStatus.Working);
+
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("window-style") && value.Arguments.Contains("dim=0"));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("pane-border-format")
+            && !value.Arguments[^1].Contains("fg=", StringComparison.Ordinal));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("select-pane")
+            && value.Arguments[^1].Contains(" | * WORKING | ", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task StartDesk_RollsBackPartialSessionWhenPaneConfigurationFails()
     {
         var executor = new FakeCommandExecutor(failAtInvocation: 5);

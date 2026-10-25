@@ -453,7 +453,7 @@ internal static partial class Program
         CancellationToken cancellationToken)
     {
         var title = GetOption(args, "--title") ?? "Flyt Desk";
-        var message = GetOption(args, "--text") ?? "Native notification delivery is operational.";
+        var message = GetOption(args, "--text") ?? "Confirm that this Windows notification is visible.";
         Console.Write($"\u001b]9;{SanitizeNotification(message)}\u001b\\\a");
         var result = await new DesktopNotifier(CommandExecutor)
             .NotifyAsync(title, message, cancellationToken).ConfigureAwait(false);
@@ -463,13 +463,15 @@ internal static partial class Program
             return 2;
         }
 
-        if (!result.NativeDelivered)
+        if (!result.NativeAccepted)
         {
             AnsiConsole.MarkupLine($"[red]Native toast failed:[/] {Markup.Escape(result.Error ?? "Unknown failure")}");
             return 2;
         }
 
-        AnsiConsole.MarkupLine("[green]Native Windows notification delivered.[/]");
+        AnsiConsole.MarkupLine(
+            "[green]Windows accepted the notification request.[/] "
+            + "[grey]Visual display is not confirmed; Focus Assist or notification settings may suppress it.[/]");
         return 0;
     }
 
@@ -679,7 +681,7 @@ internal static partial class Program
                     "Flyt Desk",
                     message,
                     cancellationToken).ConfigureAwait(false);
-                if (result.NativeAttempted && !result.NativeDelivered)
+                if (result.NativeAttempted && !result.NativeAccepted)
                 {
                     await store.AddDeskEventAsync(
                         desk.Id,

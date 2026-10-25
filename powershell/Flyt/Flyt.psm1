@@ -41,9 +41,21 @@ function Invoke-Flyt {
 
 function Test-FlytEnvironment {
     [CmdletBinding()]
-    param()
+    param(
+        [switch] $Interactive,
+        [string] $Template,
+        [string] $Receipt,
+        [switch] $AllowSmallTerminal,
+        [switch] $KeepDesk
+    )
 
-    Invoke-Flyt doctor
+    $arguments = @('doctor')
+    if ($Interactive) { $arguments += '--interactive' }
+    if ($Template) { $arguments += @('--template', $Template) }
+    if ($Receipt) { $arguments += @('--receipt', $Receipt) }
+    if ($AllowSmallTerminal) { $arguments += '--allow-small-terminal' }
+    if ($KeepDesk) { $arguments += '--keep-desk' }
+    Invoke-Flyt @arguments
 }
 
 function Start-FlytDesk {
@@ -253,7 +265,7 @@ function Test-FlytDeskNotification {
     [CmdletBinding()]
     param(
         [string] $Title = 'Flyt Desk',
-        [string] $Text = 'Native notification delivery is operational.'
+        [string] $Text = 'Confirm that this Windows notification is visible.'
     )
 
     Invoke-Flyt desk notify --title $Title --text $Text

@@ -1,6 +1,6 @@
 @{
     RootModule = 'Flyt.psm1'
-    ModuleVersion = '0.5.0'
+    ModuleVersion = '0.5.1'
     GUID = '6f86803f-14bf-483b-80fd-b6376b775481'
     Author = 'Håkon Pilvik'
     CompanyName = 'HomeBase'
