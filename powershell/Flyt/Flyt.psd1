@@ -1,6 +1,6 @@
 @{
     RootModule = 'Flyt.psm1'
-    ModuleVersion = '0.5.1'
+    ModuleVersion = '0.5.2'
     GUID = '6f86803f-14bf-483b-80fd-b6376b775481'
     Author = 'Håkon Pilvik'
     CompanyName = 'HomeBase'
@@ -9,6 +9,7 @@
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
         'Invoke-Flyt',
+        'Enable-FlytCompletion',
         'Test-FlytEnvironment',
         'Start-FlytDesk',
         'Enter-FlytDesk',

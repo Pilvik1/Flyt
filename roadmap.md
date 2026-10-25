@@ -21,8 +21,9 @@
 ## Phase 2 — Desk cockpit
 
 - [x] Native Windows psmux execution in CI.
-- [x] Deterministic one-to-six-session layouts.
-- [x] Adaptive one-to-six-pane layouts and zoom-preserving focus mode.
+- [x] Deterministic one-to-ten-session layouts.
+- [x] Adaptive one-to-ten-pane layouts and zoom-preserving focus mode.
+- [x] Guided pane/provider configuration with Claude, Codex, OpenCode, and Shell.
 - [x] Integrated role/state headers, active-pane emphasis, and aggregate status line.
 - [x] One-command start/reopen/monitor/attach with focus persistence.
 - [x] Keyboard-first pane jumps and contextual action popups.
@@ -32,7 +33,7 @@
 - [x] Directory-aware session templates and targeted operator broadcast.
 - [x] Durable failure receipts and structured Desk handoff bundles.
 - [x] Resource-gated queue, searchable history, Desk reopen, and Windows toast path.
-- [x] Real six-pane psmux shell lifecycle in Windows CI.
+- [x] Real ten-pane psmux shell lifecycle in Windows CI.
 - [ ] Prove restart re-adoption on the target Windows host.
 
 ## Phase 3 — Mission foundation

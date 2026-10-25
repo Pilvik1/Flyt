@@ -28,7 +28,11 @@ $roles = @(
     @{ Name = 'researcher'; Role = 'researcher'; Task = 'Research'; Tags = @('research') },
     @{ Name = 'reviewer'; Role = 'reviewer'; Task = 'Review'; Tags = @('review') },
     @{ Name = 'verifier'; Role = 'verifier'; Task = 'Verify'; Tags = @('verify', 'expensive') },
-    @{ Name = 'ops'; Role = 'ops'; Task = 'Operate'; Tags = @('shell') }
+    @{ Name = 'ops'; Role = 'ops'; Task = 'Operate'; Tags = @('shell') },
+    @{ Name = 'shell-2'; Role = 'shell'; Task = 'Shell 2'; Tags = @('shell') },
+    @{ Name = 'shell-3'; Role = 'shell'; Task = 'Shell 3'; Tags = @('shell') },
+    @{ Name = 'shell-4'; Role = 'shell'; Task = 'Shell 4'; Tags = @('shell') },
+    @{ Name = 'shell-5'; Role = 'shell'; Task = 'Shell 5'; Tags = @('shell') }
 )
 [ordered]@{
     Name = 'ci-full-review'
@@ -69,15 +73,16 @@ try {
         -or $inactiveStyle -notmatch 'dim=12' `
         -or $statusLeft -notmatch 'FLYT' `
         -or $bindings -notmatch 'desk action.+--action send' `
-        -or $bindings -notmatch 'M-6.+select-pane') {
+        -or $bindings -notmatch 'M-6.+select-pane' `
+        -or $bindings -notmatch 'M-0.+select-pane') {
         throw "Integrated cockpit chrome/controls were not configured: border=$borderLines format=$borderFormat window=$inactiveStyle status=$statusLeft"
     }
     psmux list-panes -t $DeskName -F '#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_dead}' |
         ForEach-Object { Write-Host "PSMUX: $_" }
     $status = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
     $desk = @($status.registered | Where-Object sessionName -eq $DeskName)
-    if ($desk.Count -ne 1 -or @($desk[0].panes).Count -ne 6) {
-        throw 'Live psmux proof did not re-adopt exactly six panes.'
+    if ($desk.Count -ne 1 -or @($desk[0].panes).Count -ne 10) {
+        throw 'Live psmux proof did not re-adopt exactly ten panes.'
     }
     $unhealthy = @($desk[0].panes | Where-Object { $_.status -in @('Missing', 'Failed', 'Exited', 'Stopped') })
     if ($unhealthy.Count -gt 0) {
@@ -164,8 +169,8 @@ try {
     Invoke-LiveFlyt desk open --name $DeskName --no-attach | Write-Host
     $reopened = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
     $reopenedDesk = @($reopened.registered | Where-Object sessionName -eq $DeskName)
-    if ($reopenedDesk.Count -ne 1 -or @($reopenedDesk[0].panes).Count -ne 6) {
-        throw 'Stopped Desk did not reopen with all six pane identities.'
+    if ($reopenedDesk.Count -ne 1 -or @($reopenedDesk[0].panes).Count -ne 10) {
+        throw 'Stopped Desk did not reopen with all ten pane identities.'
     }
     $activeTitle = (& psmux list-panes -t $DeskName -F '#{pane_active}|#{pane_title}' |
         Where-Object { $_ -like '1|*' } | Out-String).Trim()
@@ -185,8 +190,8 @@ try {
     Invoke-LiveFlyt desk reopen --name $DeskName | Write-Host
     Start-Sleep -Milliseconds 750
     $recoveredPaneIds = @(& psmux list-panes -t $DeskName -F '#{pane_id}')
-    if ($recoveredPaneIds.Count -ne 6 -or @($recoveredPaneIds | Sort-Object -Unique).Count -ne 6) {
-        throw 'Unexpected-loss recovery did not restore six unique pane IDs.'
+    if ($recoveredPaneIds.Count -ne 10 -or @($recoveredPaneIds | Sort-Object -Unique).Count -ne 10) {
+        throw 'Unexpected-loss recovery did not restore ten unique pane IDs.'
     }
     $recoveredActiveTitle = (& psmux list-panes -t $DeskName -F '#{pane_active}|#{pane_title}' |
         Where-Object { $_ -like '1|*' } | Out-String).Trim()
@@ -203,4 +208,4 @@ finally {
     }
 }
 
-Write-Host 'Live Windows psmux proof passed: six panes, re-adoption, send, queue, handoffs, history, stop/reopen, and unexpected-loss recovery.'
+Write-Host 'Live Windows psmux proof passed: ten panes, re-adoption, send, queue, handoffs, history, stop/reopen, and unexpected-loss recovery.'

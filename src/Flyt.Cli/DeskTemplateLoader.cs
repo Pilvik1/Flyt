@@ -89,6 +89,29 @@ internal static class DeskTemplateLoader
         return path;
     }
 
+    public static async Task<string> WriteAsync(
+        DeskTemplate template,
+        string workspacePath,
+        bool overwrite,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        template.Validate();
+        var directory = Path.Combine(Path.GetFullPath(workspacePath), ".flyt");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "desk.json");
+        if (File.Exists(path) && !overwrite)
+        {
+            throw new IOException($"Desk template already exists: {path}. Re-run with --force to replace it.");
+        }
+
+        await File.WriteAllTextAsync(
+            path,
+            JsonSerializer.Serialize(template, TemplateJson) + Environment.NewLine,
+            cancellationToken).ConfigureAwait(false);
+        return path;
+    }
+
     private static string Resolve(string reference, string workspacePath)
     {
         var candidates = new List<string>();

@@ -50,6 +50,8 @@ public sealed class PsmuxClientTests
             && value.Arguments.Any(argument => argument.Contains("--action send", StringComparison.Ordinal)));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.SequenceEqual(["bind-key", "-n", "M-6", "select-pane", "-t", "daily:0.5"]));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.SequenceEqual(["bind-key", "-n", "M-0", "select-pane", "-t", "daily:0.9"]));
     }
 
     [Fact]

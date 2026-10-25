@@ -8,7 +8,7 @@ written by the command list.
 
 Flyt has two layers:
 
-- **Desk** is the daily cockpit: one to six Claude, Codex, or PowerShell panes.
+- **Desk** is the daily cockpit: one to ten Claude, Codex, OpenCode, or PowerShell panes.
 - **Mission** is the controlled workflow: plan, approve, execute, review, verify,
   and stop at explicit limits.
 
@@ -19,8 +19,8 @@ approval boundary, and deterministic verification.
 
 ```powershell
 flyt doctor
-flyt desk template init --path .
-flyt desk open --path . --template default
+flyt desk configure --path .
+flyt desk open
 flyt desk status
 ```
 
@@ -36,18 +36,33 @@ flyt doctor
 ```
 
 Flyt expects Windows 11, PowerShell 7, Git, psmux 3.4.0 or newer, Claude Code,
-and Codex. `doctor` reports missing components without changing the machine.
+and Codex for the core acceptance flow. `doctor` also reports OpenCode when it is
+installed. It changes nothing on the machine.
 
-### 2. Create a repository template
+### 2. Choose panes and providers
 
 From the repository you want to operate:
 
 ```powershell
-flyt desk template init --path .
+flyt desk configure --path .
 ```
 
-This creates `.flyt/desk.json`. Edit the pane names, roles, tasks, providers, and
-tags to match the repository. Pane names must be unique.
+Choose 1–10 panes. For every pane, select Claude, Codex, OpenCode, or Shell, then
+set its name, role, and task label. Flyt previews the result and writes
+`.flyt/desk.json`; pane names must be unique. It can open the Desk immediately.
+
+For repeatable setup without prompts:
+
+```powershell
+flyt desk configure --path . --name solo --panes 1 --providers claude
+flyt desk configure --path . --name pair --panes 2 --providers claude,codex
+flyt desk configure --path . --name mixed --panes 4 `
+  --providers claude,codex,opencode,shell
+```
+
+Use `--force` to replace an existing template non-interactively. Use
+`flyt desk template init` only when you prefer to start from the opinionated
+five-pane JSON template and edit it by hand.
 
 ### 3. Open the cockpit
 
@@ -149,7 +164,8 @@ sends the artifact path to the destination pane.
 
 | Keys | Result |
 |---|---|
-| `Alt+1` … `Alt+6` | Jump directly to a pane |
+| `Alt+1` … `Alt+9` | Jump directly to panes 1–9 |
+| `Alt+0` | Jump directly to pane 10 |
 | `Ctrl+b`, then `A` | Jump to the next pane needing attention |
 | `Ctrl+b`, then `Z` | Zoom or restore the active pane |
 | `Ctrl+b`, then `S` | Preview and send text |
@@ -212,6 +228,8 @@ Flyt blocks an attach when the viewport is too small for the requested pane coun
 | 3 | 120×32 |
 | 4 | 120×36 |
 | 5–6 | 160×40 |
+| 7–8 | 200×48 |
+| 9–10 | 220×50 |
 
 Resize the terminal first. `--allow-small-terminal` is an explicit override when
 you accept narrow panes.
@@ -226,6 +244,22 @@ $env:FLYT_HIGH_CONTRAST = '1'  # disable inactive-pane dimming
 
 Set these before launching Flyt. State text remains visible even when colour is
 disabled.
+
+Ten panes are intended for large displays. Flyt blocks an undersized attach unless
+`--allow-small-terminal` is explicit; terminal lasagna remains opt-in.
+
+## PowerShell tab completion
+
+Importing the Flyt module registers completion for native `flyt` commands,
+options, Desk names, pane names, and templates:
+
+```powershell
+Import-Module Flyt
+Enable-FlytCompletion
+```
+
+The registration is automatic on import; the explicit command is safe and
+idempotent. Add `Import-Module Flyt` to `$PROFILE` to enable it in new shells.
 
 ## Notification truth
 
@@ -255,6 +289,7 @@ cancel use `flyt mission pause|resume|cancel --id <id>`.
 | I want to… | Command |
 |---|---|
 | Open or restore my cockpit | `flyt desk open` |
+| Choose pane count and providers | `flyt desk configure` |
 | See every Desk | `flyt desk status` |
 | Watch without attaching | `flyt desk watch --notify` |
 | Jump to attention | `flyt desk focus --name N --next` |

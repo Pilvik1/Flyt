@@ -37,7 +37,7 @@ jobs:
           $destination | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $env:PATH = "$destination;$env:PATH"
           psmux -V
-      - name: Live six-pane Windows psmux integration proof
+      - name: Live ten-pane Windows psmux integration proof
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -68,7 +68,13 @@ jobs:
             'Stop-FlytDeskWork'
             'Get-FlytDeskHistory'
             'Test-FlytDeskNotification'
+            'Enable-FlytCompletion'
           ) | ForEach-Object { Get-Command $_ -ErrorAction Stop }
+          $line = 'flyt desk con'
+          $completions = (TabExpansion2 $line $line.Length).CompletionMatches.CompletionText
+          if ($completions -notcontains 'configure') {
+            throw "Flyt native completion did not suggest 'configure': $($completions -join ', ')"
+          }
       - name: Package and install smoke test
         if: runner.os == 'Windows'
         shell: pwsh

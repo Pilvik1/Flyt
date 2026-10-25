@@ -32,9 +32,9 @@ public sealed class PsmuxLayoutPlannerTests
     }
 
     [Fact]
-    public void BuildPreview_RejectsMoreThanSixSessions()
+    public void BuildPreview_RejectsMoreThanTenSessions()
     {
-        var sessions = Enumerable.Range(1, 7)
+        var sessions = Enumerable.Range(1, 11)
             .Select(index => Session(AgentProvider.Claude, $"agent-{index}"))
             .ToArray();
 
@@ -61,6 +61,7 @@ public sealed class PsmuxLayoutPlannerTests
     [InlineData(3, "main-vertical")]
     [InlineData(4, "tiled")]
     [InlineData(6, "tiled")]
+    [InlineData(10, "tiled")]
     public void LayoutNameForCount_UsesReadableAdaptiveLayouts(int count, string expected)
     {
         Assert.Equal(expected, PsmuxLayoutPlanner.LayoutNameForCount(count));
@@ -94,6 +95,7 @@ public sealed class PsmuxLayoutPlannerTests
             {
                 AgentProvider.Claude => "claude",
                 AgentProvider.Codex => "codex",
+                AgentProvider.OpenCode => "opencode",
                 AgentProvider.Shell => "pwsh",
                 _ => throw new ArgumentOutOfRangeException(nameof(provider)),
             });

@@ -38,4 +38,21 @@ public sealed class TerminalCompatibilityTests
         Assert.True(report.IsSupported);
         Assert.Empty(report.Errors);
     }
+
+    [Fact]
+    public void Evaluate_RequiresLargeViewportForTenPanes()
+    {
+        var blocked = TerminalCompatibility.Evaluate(
+            "psmux 3.4.0",
+            10,
+            new TerminalViewport(200, 48));
+        var supported = TerminalCompatibility.Evaluate(
+            "psmux 3.4.0",
+            10,
+            new TerminalViewport(220, 50));
+
+        Assert.False(blocked.IsSupported);
+        Assert.Contains(blocked.Errors, value => value.Contains("220x50", StringComparison.Ordinal));
+        Assert.True(supported.IsSupported);
+    }
 }

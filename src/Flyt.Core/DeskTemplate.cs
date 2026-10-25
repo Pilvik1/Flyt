@@ -10,9 +10,9 @@ public sealed record DeskTemplate(
     public void Validate()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Name);
-        if (Panes.Count is < 1 or > 6)
+        if (Panes.Count is < 1 or > 10)
         {
-            throw new ArgumentOutOfRangeException(nameof(Panes), "A Desk template requires one to six panes.");
+            throw new ArgumentOutOfRangeException(nameof(Panes), "A Desk template requires one to ten panes.");
         }
 
         var duplicate = Panes.GroupBy(pane => pane.Name, StringComparer.OrdinalIgnoreCase)
