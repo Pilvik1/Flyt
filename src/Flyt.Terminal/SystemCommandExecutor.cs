@@ -71,6 +71,7 @@ public sealed class SystemCommandExecutor : ICommandExecutor
         {
             FileName = invocation.FileName,
             UseShellExecute = false,
+            WorkingDirectory = invocation.WorkingDirectory ?? string.Empty,
         };
 
         foreach (var argument in invocation.Arguments)

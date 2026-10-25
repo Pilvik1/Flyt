@@ -226,6 +226,68 @@ public sealed class FlytStateStore
                 """,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (version < 7)
+        {
+            await ApplyMigrationAsync(
+                connection,
+                7,
+                """
+                CREATE TABLE mission_workspaces (
+                    mission_id TEXT PRIMARY KEY,
+                    repository_root TEXT NOT NULL,
+                    worktree_path TEXT NOT NULL UNIQUE,
+                    branch_name TEXT NOT NULL UNIQUE,
+                    base_commit TEXT NOT NULL,
+                    head_commit TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (mission_id) REFERENCES missions(id)
+                );
+
+                CREATE TABLE mission_attempts (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL,
+                    attempt_number INTEGER NOT NULL,
+                    provider TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    plan_version INTEGER NOT NULL,
+                    plan_fingerprint TEXT NOT NULL,
+                    exit_code INTEGER NULL,
+                    standard_output TEXT NOT NULL,
+                    standard_error TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NULL,
+                    FOREIGN KEY (mission_id) REFERENCES missions(id),
+                    UNIQUE (mission_id, attempt_number)
+                );
+
+                CREATE INDEX ix_mission_attempts_mission_number
+                    ON mission_attempts(mission_id, attempt_number DESC);
+
+                CREATE TABLE mission_verification_receipts (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL,
+                    attempt_id TEXT NOT NULL,
+                    command TEXT NOT NULL,
+                    exit_code INTEGER NOT NULL,
+                    passed INTEGER NOT NULL,
+                    base_commit TEXT NOT NULL,
+                    head_commit TEXT NOT NULL,
+                    changed_paths_json TEXT NOT NULL,
+                    standard_output TEXT NOT NULL,
+                    standard_error TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    FOREIGN KEY (mission_id) REFERENCES missions(id),
+                    FOREIGN KEY (attempt_id) REFERENCES mission_attempts(id)
+                );
+
+                CREATE INDEX ix_mission_verification_mission_time
+                    ON mission_verification_receipts(mission_id, completed_at DESC);
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateMissionAsync(
@@ -576,6 +638,260 @@ public sealed class FlytStateStore
         }
 
         return events;
+    }
+
+    public async Task<MissionWorkspace> SaveMissionWorkspaceAsync(
+        MissionWorkspace workspace,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var existing = await GetMissionWorkspaceAsync(connection, workspace.MissionId, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is not null
+            && (!string.Equals(existing.RepositoryRoot, workspace.RepositoryRoot, StringComparison.Ordinal)
+                || !string.Equals(existing.WorktreePath, workspace.WorktreePath, StringComparison.Ordinal)
+                || !string.Equals(existing.BranchName, workspace.BranchName, StringComparison.Ordinal)
+                || !string.Equals(existing.BaseCommit, workspace.BaseCommit, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                "The persisted Mission workspace does not match the requested workspace.");
+        }
+
+        var saved = workspace with
+        {
+            CreatedAt = existing?.CreatedAt ?? workspace.CreatedAt,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO mission_workspaces (
+                mission_id, repository_root, worktree_path, branch_name,
+                base_commit, head_commit, created_at, updated_at
+            ) VALUES (
+                $missionId, $repositoryRoot, $worktreePath, $branchName,
+                $baseCommit, $headCommit, $createdAt, $updatedAt
+            )
+            ON CONFLICT(mission_id) DO UPDATE SET
+                head_commit = excluded.head_commit,
+                updated_at = excluded.updated_at;
+            """;
+        command.Parameters.AddWithValue("$missionId", saved.MissionId.ToString("D"));
+        command.Parameters.AddWithValue("$repositoryRoot", saved.RepositoryRoot);
+        command.Parameters.AddWithValue("$worktreePath", saved.WorktreePath);
+        command.Parameters.AddWithValue("$branchName", saved.BranchName);
+        command.Parameters.AddWithValue("$baseCommit", saved.BaseCommit);
+        command.Parameters.AddWithValue("$headCommit", saved.HeadCommit);
+        command.Parameters.AddWithValue("$createdAt", FormatDate(saved.CreatedAt));
+        command.Parameters.AddWithValue("$updatedAt", FormatDate(saved.UpdatedAt));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        return saved;
+    }
+
+    public async Task<MissionWorkspace?> GetMissionWorkspaceAsync(
+        Guid missionId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await GetMissionWorkspaceAsync(connection, missionId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<MissionAttempt> StartMissionAttemptAsync(
+        Guid missionId,
+        AgentProvider provider,
+        int planVersion,
+        string planFingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(planFingerprint);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var sqliteTransaction = (SqliteTransaction)transaction;
+        await using var numberCommand = connection.CreateCommand();
+        numberCommand.Transaction = sqliteTransaction;
+        numberCommand.CommandText = """
+            SELECT COALESCE(MAX(attempt_number), 0) + 1
+            FROM mission_attempts
+            WHERE mission_id = $missionId;
+            """;
+        numberCommand.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+        var number = Convert.ToInt32(
+            await numberCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
+            CultureInfo.InvariantCulture);
+        var startedAt = DateTimeOffset.UtcNow;
+        var attempt = new MissionAttempt(
+            Guid.NewGuid(),
+            missionId,
+            number,
+            provider,
+            MissionAttemptStatus.Running,
+            planVersion,
+            planFingerprint,
+            ExitCode: null,
+            StandardOutput: string.Empty,
+            StandardError: string.Empty,
+            startedAt,
+            CompletedAt: null);
+
+        await using var insert = connection.CreateCommand();
+        insert.Transaction = sqliteTransaction;
+        insert.CommandText = """
+            INSERT INTO mission_attempts (
+                id, mission_id, attempt_number, provider, status,
+                plan_version, plan_fingerprint, exit_code,
+                standard_output, standard_error, started_at, completed_at
+            ) VALUES (
+                $id, $missionId, $number, $provider, $status,
+                $planVersion, $planFingerprint, NULL,
+                '', '', $startedAt, NULL
+            );
+            """;
+        insert.Parameters.AddWithValue("$id", attempt.Id.ToString("D"));
+        insert.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+        insert.Parameters.AddWithValue("$number", number);
+        insert.Parameters.AddWithValue("$provider", provider.ToString());
+        insert.Parameters.AddWithValue("$status", attempt.Status.ToString());
+        insert.Parameters.AddWithValue("$planVersion", planVersion);
+        insert.Parameters.AddWithValue("$planFingerprint", planFingerprint);
+        insert.Parameters.AddWithValue("$startedAt", FormatDate(startedAt));
+        await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return attempt;
+    }
+
+    public async Task<MissionAttempt> CompleteMissionAttemptAsync(
+        Guid attemptId,
+        MissionAttemptStatus status,
+        int? exitCode,
+        string standardOutput,
+        string standardError,
+        CancellationToken cancellationToken = default)
+    {
+        if (status == MissionAttemptStatus.Running)
+        {
+            throw new ArgumentException("A completed attempt cannot remain Running.", nameof(status));
+        }
+
+        var completedAt = DateTimeOffset.UtcNow;
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE mission_attempts
+            SET status = $status,
+                exit_code = $exitCode,
+                standard_output = $standardOutput,
+                standard_error = $standardError,
+                completed_at = $completedAt
+            WHERE id = $id AND status = 'Running';
+            """;
+        command.Parameters.AddWithValue("$status", status.ToString());
+        command.Parameters.AddWithValue("$exitCode", exitCode ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$standardOutput", SensitiveDataRedactor.Redact(standardOutput));
+        command.Parameters.AddWithValue("$standardError", SensitiveDataRedactor.Redact(standardError));
+        command.Parameters.AddWithValue("$completedAt", FormatDate(completedAt));
+        command.Parameters.AddWithValue("$id", attemptId.ToString("D"));
+        var rows = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        if (rows != 1)
+        {
+            throw new InvalidOperationException($"Running Mission attempt {attemptId:D} was not found.");
+        }
+
+        return await GetMissionAttemptAsync(connection, attemptId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Mission attempt {attemptId:D} could not be reloaded.");
+    }
+
+    public async Task<MissionAttempt?> GetLatestMissionAttemptAsync(
+        Guid missionId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, mission_id, attempt_number, provider, status,
+                   plan_version, plan_fingerprint, exit_code,
+                   standard_output, standard_error, started_at, completed_at
+            FROM mission_attempts
+            WHERE mission_id = $missionId
+            ORDER BY attempt_number DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? ReadMissionAttempt(reader)
+            : null;
+    }
+
+    public async Task SaveMissionVerificationReceiptAsync(
+        MissionVerificationReceipt receipt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO mission_verification_receipts (
+                id, mission_id, attempt_id, command, exit_code, passed,
+                base_commit, head_commit, changed_paths_json,
+                standard_output, standard_error, started_at, completed_at
+            ) VALUES (
+                $id, $missionId, $attemptId, $command, $exitCode, $passed,
+                $baseCommit, $headCommit, $changedPaths,
+                $standardOutput, $standardError, $startedAt, $completedAt
+            );
+            """;
+        command.Parameters.AddWithValue("$id", receipt.Id.ToString("D"));
+        command.Parameters.AddWithValue("$missionId", receipt.MissionId.ToString("D"));
+        command.Parameters.AddWithValue("$attemptId", receipt.AttemptId.ToString("D"));
+        command.Parameters.AddWithValue("$command", receipt.Command);
+        command.Parameters.AddWithValue("$exitCode", receipt.ExitCode);
+        command.Parameters.AddWithValue("$passed", receipt.Passed ? 1 : 0);
+        command.Parameters.AddWithValue("$baseCommit", receipt.BaseCommit);
+        command.Parameters.AddWithValue("$headCommit", receipt.HeadCommit);
+        command.Parameters.AddWithValue("$changedPaths", JsonSerializer.Serialize(receipt.ChangedPaths));
+        command.Parameters.AddWithValue("$standardOutput", SensitiveDataRedactor.Redact(receipt.StandardOutput));
+        command.Parameters.AddWithValue("$standardError", SensitiveDataRedactor.Redact(receipt.StandardError));
+        command.Parameters.AddWithValue("$startedAt", FormatDate(receipt.StartedAt));
+        command.Parameters.AddWithValue("$completedAt", FormatDate(receipt.CompletedAt));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<MissionVerificationReceipt?> GetLatestMissionVerificationReceiptAsync(
+        Guid missionId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, mission_id, attempt_id, command, exit_code, passed,
+                   base_commit, head_commit, changed_paths_json,
+                   standard_output, standard_error, started_at, completed_at
+            FROM mission_verification_receipts
+            WHERE mission_id = $missionId
+            ORDER BY completed_at DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return new MissionVerificationReceipt(
+            Guid.Parse(reader.GetString(0)),
+            Guid.Parse(reader.GetString(1)),
+            Guid.Parse(reader.GetString(2)),
+            reader.GetString(3),
+            reader.GetInt32(4),
+            reader.GetInt32(5) == 1,
+            reader.GetString(6),
+            reader.GetString(7),
+            JsonSerializer.Deserialize<string[]>(reader.GetString(8)) ?? [],
+            reader.GetString(9),
+            reader.GetString(10),
+            ParseDate(reader.GetString(11)),
+            ParseDate(reader.GetString(12)));
     }
 
     public async Task<Desk> SaveDeskAsync(
@@ -1342,6 +1658,67 @@ public sealed class FlytStateStore
             ParseDate(reader.GetString(5)),
             ParseDate(reader.GetString(6)));
     }
+
+    private static async Task<MissionWorkspace?> GetMissionWorkspaceAsync(
+        SqliteConnection connection,
+        Guid missionId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT mission_id, repository_root, worktree_path, branch_name,
+                   base_commit, head_commit, created_at, updated_at
+            FROM mission_workspaces
+            WHERE mission_id = $missionId;
+            """;
+        command.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? new MissionWorkspace(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                ParseDate(reader.GetString(6)),
+                ParseDate(reader.GetString(7)))
+            : null;
+    }
+
+    private static async Task<MissionAttempt?> GetMissionAttemptAsync(
+        SqliteConnection connection,
+        Guid attemptId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, mission_id, attempt_number, provider, status,
+                   plan_version, plan_fingerprint, exit_code,
+                   standard_output, standard_error, started_at, completed_at
+            FROM mission_attempts
+            WHERE id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", attemptId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? ReadMissionAttempt(reader)
+            : null;
+    }
+
+    private static MissionAttempt ReadMissionAttempt(SqliteDataReader reader) => new(
+        Guid.Parse(reader.GetString(0)),
+        Guid.Parse(reader.GetString(1)),
+        reader.GetInt32(2),
+        Enum.Parse<AgentProvider>(reader.GetString(3)),
+        Enum.Parse<MissionAttemptStatus>(reader.GetString(4)),
+        reader.GetInt32(5),
+        reader.GetString(6),
+        reader.IsDBNull(7) ? null : reader.GetInt32(7),
+        reader.GetString(8),
+        reader.GetString(9),
+        ParseDate(reader.GetString(10)),
+        reader.IsDBNull(11) ? null : ParseDate(reader.GetString(11)));
 
     private static async Task<Desk?> GetDeskAsync(
         SqliteConnection connection,
