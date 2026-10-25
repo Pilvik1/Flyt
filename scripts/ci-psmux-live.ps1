@@ -31,7 +31,7 @@ Invoke-LiveFlyt desk configure `
     --path $configurationWorkspace `
     --name ci-multi-repo `
     --panes 2 `
-    --providers shell,shell `
+    --providers 'shell,shell' `
     --working-directories ($configurationRepos -join '|') `
     --force | Write-Host
 $configuredTemplate = Get-Content (Join-Path $configurationWorkspace '.flyt/desk.json') -Raw | ConvertFrom-Json
