@@ -1,46 +1,92 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
-  <title id="title">Flyt multi-agent terminal cockpit</title>
-  <desc id="desc">A dark terminal window showing four named panes for Claude, Codex, OpenCode, and PowerShell across three repositories.</desc>
+  <title id="title">Flyt running inside a Windows Terminal-inspired cockpit</title>
+  <desc id="desc">A Windows 11-style terminal window showing a Flyt Desk with Claude, Codex, OpenCode, and PowerShell panes across three repositories.</desc>
   <style>
-    .bg{fill:#0b1020}.frame{fill:#111827;stroke:#334155;stroke-width:2}.bar{fill:#182235}.pane{fill:#0f172a;stroke:#334155;stroke-width:1.5}.active{stroke:#f8fafc;stroke-width:3}.cyan{fill:#22d3ee}.violet{fill:#a78bfa}.green{fill:#34d399}.amber{fill:#fbbf24}.white{fill:#f8fafc}.muted{fill:#94a3b8}.dim{fill:#64748b}.status{fill:#0b1220;stroke:#334155}.tag{fill:#1e293b;stroke:#475569}.txt{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}.brand{font:700 34px ui-sans-serif,system-ui,sans-serif;letter-spacing:1px}.small{font-size:15px}.body{font-size:17px}.label{font-size:15px;font-weight:700}.tiny{font-size:13px}.line{stroke:#334155;stroke-width:1}.cursor{fill:#22d3ee}
+    .desktop{fill:#090d14}.window{fill:#0c0c0c;stroke:#454545;stroke-width:1.5}.titlebar{fill:#202020}.tab{fill:#2b2b2b}.tabline{fill:#60cdff}.toolbar{fill:#111827}.pane{fill:#0c0c0c;stroke:#343a46;stroke-width:1.5}.active{stroke:#60cdff;stroke-width:2.5}.statusbar{fill:#111827}.pill{fill:#17202e;stroke:#334155}.rule{stroke:#2b3442;stroke-width:1}.control{stroke:#d6d6d6;stroke-width:1.4;fill:none;stroke-linecap:round}.win{fill:#60cdff}.cyan{fill:#60cdff}.blue{fill:#75beff}.violet{fill:#c586c0}.green{fill:#6ccb5f}.amber{fill:#f9c74f}.white{fill:#f3f3f3}.muted{fill:#a7a7a7}.dim{fill:#767676}.ui{font-family:"Segoe UI Variable","Segoe UI",system-ui,sans-serif}.mono{font-family:"Cascadia Code","Cascadia Mono",Consolas,"Liberation Mono",monospace}.brand{font-size:26px;font-weight:700;letter-spacing:.6px}.small{font-size:14px}.body{font-size:16px}.label{font-size:14px;font-weight:700}.tiny{font-size:12px}.tabtext{font-size:13px}.cursor{fill:#60cdff}
   </style>
-  <rect class="bg" width="1200" height="520" rx="24"/>
-  <rect class="frame" x="28" y="28" width="1144" height="464" rx="14"/>
-  <rect class="bar" x="29" y="29" width="1142" height="58" rx="13"/>
-  <circle cx="58" cy="58" r="7" fill="#fb7185"/><circle cx="82" cy="58" r="7" fill="#fbbf24"/><circle cx="106" cy="58" r="7" fill="#34d399"/>
-  <text x="142" y="69" class="brand cyan">FLYT</text>
-  <text x="247" y="64" class="txt small muted">one desk · four agents · three repos · zero tab archaeology</text>
-  <rect x="950" y="45" width="185" height="28" rx="14" class="tag"/><circle cx="970" cy="59" r="5" class="green"/><text x="985" y="64" class="txt tiny white">4 agents working</text>
 
-  <rect x="48" y="104" width="548" height="170" rx="8" class="pane active"/>
-  <rect x="604" y="104" width="548" height="170" rx="8" class="pane"/>
-  <rect x="48" y="282" width="548" height="166" rx="8" class="pane"/>
-  <rect x="604" y="282" width="548" height="166" rx="8" class="pane"/>
+  <rect class="desktop" width="1200" height="520" rx="22"/>
+  <rect class="window" x="22" y="24" width="1156" height="472" rx="14"/>
 
-  <text x="68" y="132" class="txt label cyan">1 · CLAUDE · BUILDER</text><text x="371" y="132" class="txt tiny muted">api · main</text>
-  <line x1="68" y1="145" x2="576" y2="145" class="line"/>
-  <text x="68" y="177" class="txt body white">Implement the queue recovery path</text>
-  <text x="68" y="207" class="txt small muted">C:\src\flyt-api</text>
-  <text x="68" y="242" class="txt small green">● working</text><rect x="173" y="228" width="10" height="18" class="cursor"/>
+  <!-- Windows 11 / Windows Terminal-style title bar -->
+  <path class="titlebar" d="M36 24h1128a14 14 0 0 1 14 14v42H22V38a14 14 0 0 1 14-14z"/>
+  <g aria-label="Flyt app icon">
+    <rect x="40" y="38" width="20" height="20" rx="4" class="win"/>
+    <path d="M44 44l4 4-4 4m6 0h6" stroke="#0c0c0c" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="70" y="53" class="ui tiny muted">Flyt</text>
 
-  <text x="624" y="132" class="txt label violet">2 · CODEX · REVIEWER</text><text x="936" y="132" class="txt tiny muted">api · review</text>
-  <line x1="624" y1="145" x2="1132" y2="145" class="line"/>
-  <text x="624" y="177" class="txt body white">Review correctness and regressions</text>
-  <text x="624" y="207" class="txt small muted">C:\src\flyt-api</text>
-  <text x="624" y="242" class="txt small amber">◆ needs input</text>
+  <path class="tab" d="M112 34h252a8 8 0 0 1 8 8v29H104V42a8 8 0 0 1 8-8z"/>
+  <rect x="104" y="69" width="268" height="2" class="tabline"/>
+  <text x="124" y="56" class="mono tabtext cyan">&gt;_</text>
+  <text x="151" y="56" class="ui tabtext white">Flyt · product-desk</text>
+  <path d="M350 48l7 7m0-7l-7 7" class="control"/>
+  <text x="393" y="57" class="ui body muted">+</text>
+  <path d="M427 49l5 5 5-5" class="control"/>
 
-  <text x="68" y="310" class="txt label green">3 · OPENCODE · DOCS</text><text x="380" y="310" class="txt tiny muted">web · docs</text>
-  <line x1="68" y1="323" x2="576" y2="323" class="line"/>
-  <text x="68" y="355" class="txt body white">Update the operator guide</text>
-  <text x="68" y="385" class="txt small muted">C:\src\flyt-web</text>
-  <text x="68" y="420" class="txt small green">● working</text>
+  <g aria-label="Windows window controls">
+    <path d="M1048 51h12" class="control"/>
+    <rect x="1093" y="45" width="11" height="10" class="control"/>
+    <path d="M1147 45l11 11m0-11l-11 11" class="control"/>
+  </g>
 
-  <text x="624" y="310" class="txt label amber">4 · SHELL · OPS</text><text x="900" y="310" class="txt tiny muted">infra · test</text>
-  <line x1="624" y1="323" x2="1132" y2="323" class="line"/>
-  <text x="624" y="355" class="txt body white">dotnet test --configuration Release</text>
-  <text x="624" y="385" class="txt small muted">C:\src\flyt-infra</text>
-  <text x="624" y="420" class="txt small green">✓ 94 passed</text>
+  <!-- Command and Desk identity -->
+  <rect x="23" y="80" width="1154" height="58" class="toolbar"/>
+  <text x="44" y="104" class="mono small blue">PS C:\src\flyt&gt;</text>
+  <text x="178" y="104" class="mono small white">flyt desk open product-desk</text>
+  <text x="44" y="127" class="ui brand cyan">FLYT</text>
+  <text x="121" y="125" class="mono tiny muted">one desk · four agents · three repos · zero tab archaeology</text>
+  <rect x="965" y="99" width="181" height="25" rx="12" class="pill"/>
+  <circle cx="983" cy="111.5" r="4.5" class="green"/>
+  <text x="996" y="116" class="ui tiny white">4 agents connected</text>
 
-  <rect x="48" y="456" width="1104" height="24" rx="6" class="status"/>
-  <text x="62" y="473" class="txt tiny cyan">FLYT</text><text x="114" y="473" class="txt tiny muted">3 repos · 4 agents · 3 working · 1 waiting · queue 2 · RAM 1.8 GB</text>
+  <!-- Four terminal panes -->
+  <rect x="40" y="150" width="551" height="144" rx="5" class="pane active"/>
+  <rect x="599" y="150" width="561" height="144" rx="5" class="pane"/>
+  <rect x="40" y="302" width="551" height="142" rx="5" class="pane"/>
+  <rect x="599" y="302" width="561" height="142" rx="5" class="pane"/>
+
+  <text x="58" y="175" class="mono label cyan">1  CLAUDE</text>
+  <text x="150" y="175" class="ui tiny muted">Builder</text>
+  <text x="473" y="175" class="mono tiny dim">api  main</text>
+  <line x1="58" y1="187" x2="573" y2="187" class="rule"/>
+  <text x="58" y="213" class="mono body white">Implement the queue recovery path</text>
+  <text x="58" y="238" class="mono small muted">C:\src\flyt-api</text>
+  <text x="58" y="271" class="mono small green">● working</text>
+  <rect x="151" y="258" width="9" height="17" class="cursor"/>
+
+  <text x="617" y="175" class="mono label violet">2  CODEX</text>
+  <text x="700" y="175" class="ui tiny muted">Reviewer</text>
+  <text x="1034" y="175" class="mono tiny dim">api  review</text>
+  <line x1="617" y1="187" x2="1142" y2="187" class="rule"/>
+  <text x="617" y="213" class="mono body white">Review correctness and regressions</text>
+  <text x="617" y="238" class="mono small muted">C:\src\flyt-api</text>
+  <text x="617" y="271" class="mono small amber">◆ needs input</text>
+
+  <text x="58" y="327" class="mono label green">3  OPENCODE</text>
+  <text x="172" y="327" class="ui tiny muted">Docs</text>
+  <text x="479" y="327" class="mono tiny dim">web  docs</text>
+  <line x1="58" y1="339" x2="573" y2="339" class="rule"/>
+  <text x="58" y="365" class="mono body white">Update the operator guide</text>
+  <text x="58" y="390" class="mono small muted">C:\src\flyt-web</text>
+  <text x="58" y="423" class="mono small green">● working</text>
+
+  <text x="617" y="327" class="mono label amber">4  POWERSHELL</text>
+  <text x="749" y="327" class="ui tiny muted">Ops</text>
+  <text x="1024" y="327" class="mono tiny dim">infra  test</text>
+  <line x1="617" y1="339" x2="1142" y2="339" class="rule"/>
+  <text x="617" y="365" class="mono body white">dotnet test --configuration Release</text>
+  <text x="617" y="390" class="mono small muted">C:\src\flyt-infra</text>
+  <text x="617" y="423" class="mono small green">✓ 98 passed</text>
+
+  <!-- Compact operator status line -->
+  <rect x="40" y="454" width="1120" height="25" rx="4" class="statusbar"/>
+  <rect x="40" y="454" width="75" height="25" rx="4" fill="#0078d4"/>
+  <text x="59" y="471" class="ui tiny white">FLYT</text>
+  <text x="128" y="471" class="mono tiny muted">product-desk</text>
+  <text x="248" y="471" class="mono tiny muted">3 repos</text>
+  <text x="330" y="471" class="mono tiny muted">4 agents</text>
+  <text x="420" y="471" class="mono tiny green">3 working</text>
+  <text x="515" y="471" class="mono tiny amber">1 waiting</text>
+  <text x="1009" y="471" class="mono tiny dim">pwsh 7 · UTF-8</text>
 </svg>
