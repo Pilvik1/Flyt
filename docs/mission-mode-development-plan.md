@@ -4,6 +4,13 @@ Mission mode is currently a durable control plane: briefs, plans, approvals, sta
 transitions, and events survive restarts. This plan adds the execution engine in
 small slices that can be proved independently.
 
+## Current status
+
+The beta engineering path through M1-M7 is implemented. Commit, push, and draft-PR
+preparation require an explicit operator command; merge remains manual. The remaining
+release gates are the Codex app-server upgrade and the five-Mission/two-week Windows
+pilot. See [`../roadmap.md`](../roadmap.md) for the live checklist.
+
 ## Operating constraints
 
 - One write-capable builder until the single-builder path is reliable.

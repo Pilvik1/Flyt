@@ -18,7 +18,8 @@
 </p>
 
 > **Status:** private while the public-release checklist is finished. Desk mode works
-> and is release-gated. Mission mode is still under construction.
+> and is release-gated. Mission mode has an end-to-end beta path; target-host pilot
+> evidence is still pending.
 
 ## Why Flyt exists
 
@@ -149,10 +150,17 @@ with deeper cockpit behavior in [Desk cockpit](docs/desk-cockpit.md).
 
 ### Mission mode
 
-Mission mode is not ready for day-to-day use. The state machine, acceptance plan,
-approval flow, events, and pause/resume/cancel paths exist, but Flyt does not yet run
-`plan → build → review → verify → integrate` end to end. The remaining work is tracked
-in the [roadmap](roadmap.md).
+Mission mode now runs one bounded path end to end:
+
+`approved plan → isolated builder worktree → independent review → deterministic verification → operator-approved integration`
+
+Attempts, timeouts, review verdicts, changed paths, diff fingerprints, and verification
+output are persisted locally. Flyt blocks stale approvals, empty diffs, changed evidence,
+known secret patterns, ambiguous reviews, and interrupted runs. It can prepare a commit,
+push, and draft PR only through an explicit `mission integrate` command; merge stays manual.
+
+This is still beta software. The remaining proof is target-host failure injection and five
+real Missions across two weeks, tracked in the [roadmap](roadmap.md).
 
 ## Architecture
 

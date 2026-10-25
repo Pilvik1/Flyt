@@ -1,4 +1,6 @@
 using Flyt.Core;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Flyt.Terminal;
 
@@ -100,6 +102,41 @@ public sealed class GitWorktreeManager(ICommandExecutor executor, string worktre
             ["rev-parse", "HEAD"],
             cancellationToken).ConfigureAwait(false);
 
+    public async Task<string> ComputeDiffFingerprintAsync(
+        MissionWorkspace workspace,
+        IReadOnlyList<string> changedPaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(changedPaths);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var root = Path.GetFullPath(workspace.WorktreePath);
+        foreach (var changedPath in changedPaths.Order(StringComparer.Ordinal))
+        {
+            var pathBytes = Encoding.UTF8.GetBytes(changedPath);
+            hash.AppendData(BitConverter.GetBytes(pathBytes.Length));
+            hash.AppendData(pathBytes);
+            var fullPath = Path.GetFullPath(Path.Combine(root, changedPath));
+            EnsurePathBelowRoot(root, fullPath);
+            if (!File.Exists(fullPath))
+            {
+                hash.AppendData([0]);
+                continue;
+            }
+
+            hash.AppendData([1]);
+            await using var stream = File.OpenRead(fullPath);
+            var buffer = new byte[81_920];
+            int count;
+            while ((count = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                hash.AppendData(buffer, 0, count);
+            }
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+    }
+
     private async Task<MissionWorkspace> ReadExistingAsync(
         Guid missionId,
         string repositoryRoot,
@@ -177,6 +214,17 @@ public sealed class GitWorktreeManager(ICommandExecutor executor, string worktre
             || Path.IsPathFullyQualified(relative))
         {
             throw new InvalidOperationException("Mission worktree path escaped the configured root.");
+        }
+    }
+
+    private static void EnsurePathBelowRoot(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        if (relative == ".."
+            || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+            || Path.IsPathFullyQualified(relative))
+        {
+            throw new InvalidOperationException("Changed path escaped the Mission worktree.");
         }
     }
 
