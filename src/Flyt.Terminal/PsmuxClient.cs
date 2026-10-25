@@ -215,6 +215,9 @@ public sealed class PsmuxClient(
         {
             (["A"], ["run-shell", "-b", PowerShellCommand($"flyt desk focus --name {normalizedName} --next")]),
             (["Z"], ["resize-pane", "-Z"]),
+            (["N"], PopupAction(normalizedName, "add-pane")),
+            (["X"], PopupAction(normalizedName, "remove-pane")),
+            (["x"], PopupAction(normalizedName, "remove-pane")),
             (["S"], PopupAction(normalizedName, "send")),
             (["R"], PopupAction(normalizedName, "restart")),
             (["H"], PopupAction(normalizedName, "handoff")),
@@ -377,6 +380,16 @@ public sealed class PsmuxClient(
             PsmuxLayoutPlanner.LayoutCommand(executable, normalizedName, paneCount),
             cancellationToken).ConfigureAwait(false);
         return new DeskPaneHandle(paneId, session);
+    }
+
+    public async Task RemovePaneAsync(
+        string paneId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paneId);
+        await RunRequiredAsync(
+            new CommandInvocation(executable, ["kill-pane", "-t", paneId]),
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<string> CapturePaneAsync(

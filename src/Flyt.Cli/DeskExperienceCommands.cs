@@ -270,6 +270,8 @@ internal static partial class Program
                         .AddChoices(
                             "Overview",
                             "Jump to pane",
+                            "Add pane",
+                            "Close pane",
                             "Recent logs",
                             "Send text",
                             "Queue work",
@@ -282,6 +284,8 @@ internal static partial class Program
                 {
                     "Overview" => "overview",
                     "Jump to pane" => "jump",
+                    "Add pane" => "add-pane",
+                    "Close pane" => "remove-pane",
                     "Recent logs" => "logs",
                     "Send text" => "send",
                     "Queue work" => "queue",
@@ -304,6 +308,19 @@ internal static partial class Program
 
                 return await RunDeskActionAsync(
                     psmux, store, providers, nextArguments.ToArray(), cancellationToken).ConfigureAwait(false);
+
+            case "add-pane":
+                return await AddDeskPaneAsync(
+                    psmux, store, providers, ["--name", name], cancellationToken).ConfigureAwait(false);
+
+            case "remove-pane":
+                pane = RequireActionPane(pane, paneId);
+                return await RemoveDeskPaneAsync(
+                    psmux,
+                    store,
+                    providers,
+                    ["--name", name, "--pane", pane.Name],
+                    cancellationToken).ConfigureAwait(false);
 
             case "overview":
                 var dispatch = await DeskQueueDispatcher.DispatchAsync(

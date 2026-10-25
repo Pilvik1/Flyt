@@ -69,6 +69,8 @@ applies and verifies the cockpit configuration without entering the full-screen 
 | `Alt+0` | Jump directly to pane 10 |
 | `Ctrl+b`, `A` | Focus the next pane needing attention |
 | `Ctrl+b`, `Z` | Zoom or restore the active pane |
+| `Ctrl+b`, `N` | Add a pane to the running Desk |
+| `Ctrl+b`, `X` or `x` | Close the active pane after a warning |
 | `Ctrl+b`, `S` | Preview and send text |
 | `Ctrl+b`, `R` | Confirm and restart/resume the active pane |
 | `Ctrl+b`, `H` | Create and deliver a structured handoff |
@@ -77,8 +79,20 @@ applies and verifies the cockpit configuration without entering the full-screen 
 | `Ctrl+b`, `O` | Open the Desk action menu |
 | `Ctrl+b`, `?` | Show the psmux shortcut overlay |
 
-The action menu keeps queue state, failure receipts, history, logs, handoffs, and
-pane jumping in context instead of forcing the operator into a separate dashboard.
+The action menu keeps pane creation and removal, queue state, failure receipts,
+history, logs, handoffs, and pane jumping in context instead of forcing the operator
+into a separate dashboard. Added panes are registered durably and survive
+stop/reopen. Closing a pane always warns that the process and unsaved terminal work
+will be lost; any queued or dispatched work assigned to that pane is cancelled.
+
+The same lifecycle operations are available without the popup:
+
+```powershell
+flyt desk add-pane --name full-review --provider codex --pane reviewer-2
+flyt desk remove-pane --name full-review --pane reviewer-2
+```
+
+The last pane cannot be removed; use `flyt desk stop` to close the whole Desk.
 
 `flyt desk watch --notify` refreshes the cockpit and requests both a native Windows
 toast and an OSC 9/BEL terminal fallback when a pane newly needs input, completes,

@@ -174,6 +174,8 @@ sends the artifact path to the destination pane.
 | `Alt+0` | Jump directly to pane 10 |
 | `Ctrl+b`, then `A` | Jump to the next pane needing attention |
 | `Ctrl+b`, then `Z` | Zoom or restore the active pane |
+| `Ctrl+b`, then `N` | Add a pane to the running Desk |
+| `Ctrl+b`, then `X` or `x` | Close the active pane after a warning |
 | `Ctrl+b`, then `S` | Preview and send text |
 | `Ctrl+b`, then `R` | Restart or resume the active pane |
 | `Ctrl+b`, then `H` | Create a structured handoff |
@@ -184,6 +186,17 @@ sends the artifact path to the destination pane.
 | `Ctrl+b`, then `d` | Detach without stopping the Desk |
 
 If a terminal consumes an `Alt` shortcut, use the action menu or `flyt desk focus`.
+
+Panes can also be changed from a separate terminal while the Desk is attached:
+
+```powershell
+flyt desk add-pane --name full-review --provider claude --pane builder-2
+flyt desk remove-pane --name full-review --pane builder-2
+```
+
+Removal terminates the pane process and warns before proceeding. It also cancels
+queued or dispatched work assigned to that pane. Flyt blocks removal of the last
+pane; stop the Desk instead when the whole session should end.
 
 ## Recovery recipes
 

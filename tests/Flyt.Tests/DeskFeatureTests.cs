@@ -1,3 +1,4 @@
+using Flyt.Cli;
 using Flyt.Core;
 using Flyt.Providers;
 
@@ -5,6 +6,21 @@ namespace Flyt.Tests;
 
 public sealed class DeskFeatureTests
 {
+    [Fact]
+    public void UniquePaneName_AppendsFirstAvailableNumericSuffix()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var deskId = Guid.NewGuid();
+        DeskPane Pane(string name) => new(
+            Guid.NewGuid(), deskId, $"%{name}", AgentProvider.Codex, name,
+            Environment.CurrentDirectory, "codex", "reviewer", "Review", "magenta", [], null,
+            DeskPaneStatus.Running, DeskStateSource.Registered, null, null, now, now, now);
+
+        var result = Program.UniquePaneName("codex", [Pane("codex"), Pane("codex-2"), Pane("other")]);
+
+        Assert.Equal("codex-3", result);
+    }
+
     [Theory]
     [InlineData("planner", "cyan")]
     [InlineData("builder", "blue")]

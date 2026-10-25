@@ -1298,6 +1298,167 @@ public sealed class FlytStateStore
         return saved;
     }
 
+    public async Task<Desk> AddDeskPaneAsync(
+        string sessionName,
+        DeskPane pane,
+        string layoutName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionName);
+        ArgumentNullException.ThrowIfNull(pane);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layoutName);
+
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var sqliteTransaction = (SqliteTransaction)transaction;
+        var desk = await GetDeskAsync(connection, sqliteTransaction, sessionName, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Desk '{sessionName}' was not found in the Flyt registry.");
+        if (desk.Status != DeskStatus.Running)
+        {
+            throw new InvalidOperationException($"Desk '{sessionName}' is not running.");
+        }
+        if (desk.Panes.Count >= 10)
+        {
+            throw new InvalidOperationException("A Desk supports at most ten panes.");
+        }
+        if (desk.Panes.Any(value => string.Equals(value.Name, pane.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException($"Pane '{pane.Name}' already exists in Desk '{sessionName}'.", nameof(pane));
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var savedPane = pane with
+        {
+            DeskId = desk.Id,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        await InsertDeskPaneAsync(connection, sqliteTransaction, savedPane, cancellationToken)
+            .ConfigureAwait(false);
+        await using (var updateDesk = connection.CreateCommand())
+        {
+            updateDesk.Transaction = sqliteTransaction;
+            updateDesk.CommandText = """
+                UPDATE desks
+                SET layout_name = $layoutName,
+                    updated_at = $updatedAt
+                WHERE id = $id;
+                """;
+            updateDesk.Parameters.AddWithValue("$layoutName", layoutName);
+            updateDesk.Parameters.AddWithValue("$updatedAt", FormatDate(now));
+            updateDesk.Parameters.AddWithValue("$id", desk.Id.ToString("D"));
+            await updateDesk.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await InsertDeskEventAsync(
+            connection,
+            sqliteTransaction,
+            desk.Id,
+            "pane.added",
+            savedPane.Name,
+            $"Added {savedPane.Provider} pane '{savedPane.Name}'.",
+            now,
+            cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return await GetDeskAsync(sessionName, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Desk disappeared after adding a pane.");
+    }
+
+    public async Task<Desk> RemoveDeskPaneAsync(
+        string sessionName,
+        string paneName,
+        string layoutName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(paneName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layoutName);
+
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var sqliteTransaction = (SqliteTransaction)transaction;
+        var desk = await GetDeskAsync(connection, sqliteTransaction, sessionName, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Desk '{sessionName}' was not found in the Flyt registry.");
+        var pane = desk.Panes.SingleOrDefault(value => string.Equals(
+            value.Name, paneName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new KeyNotFoundException($"Pane '{paneName}' was not found in Desk '{sessionName}'.");
+        if (desk.Panes.Count <= 1)
+        {
+            throw new InvalidOperationException("The last pane cannot be removed from a Desk.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        int cancelledWork;
+        await using (var cancelWork = connection.CreateCommand())
+        {
+            cancelWork.Transaction = sqliteTransaction;
+            cancelWork.CommandText = """
+                UPDATE desk_work_items
+                SET status = $cancelled,
+                    completed_at = $completedAt,
+                    outcome = $outcome
+                WHERE desk_id = $deskId
+                  AND pane_name = $paneName COLLATE NOCASE
+                  AND status IN ($queued, $dispatched);
+                """;
+            cancelWork.Parameters.AddWithValue("$cancelled", DeskWorkItemStatus.Cancelled.ToString());
+            cancelWork.Parameters.AddWithValue("$completedAt", FormatDate(now));
+            cancelWork.Parameters.AddWithValue("$outcome", "Pane removed by operator.");
+            cancelWork.Parameters.AddWithValue("$deskId", desk.Id.ToString("D"));
+            cancelWork.Parameters.AddWithValue("$paneName", pane.Name);
+            cancelWork.Parameters.AddWithValue("$queued", DeskWorkItemStatus.Queued.ToString());
+            cancelWork.Parameters.AddWithValue("$dispatched", DeskWorkItemStatus.Dispatched.ToString());
+            cancelledWork = await cancelWork.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var deletePane = connection.CreateCommand())
+        {
+            deletePane.Transaction = sqliteTransaction;
+            deletePane.CommandText = "DELETE FROM desk_panes WHERE id = $id;";
+            deletePane.Parameters.AddWithValue("$id", pane.Id.ToString("D"));
+            if (await deletePane.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+            {
+                throw new InvalidOperationException($"Pane '{pane.Name}' changed concurrently.");
+            }
+        }
+
+        await using (var updateDesk = connection.CreateCommand())
+        {
+            updateDesk.Transaction = sqliteTransaction;
+            updateDesk.CommandText = """
+                UPDATE desks
+                SET layout_name = $layoutName,
+                    focused_pane_name = CASE
+                        WHEN focused_pane_name = $paneName COLLATE NOCASE THEN NULL
+                        ELSE focused_pane_name
+                    END,
+                    updated_at = $updatedAt
+                WHERE id = $id;
+                """;
+            updateDesk.Parameters.AddWithValue("$layoutName", layoutName);
+            updateDesk.Parameters.AddWithValue("$paneName", pane.Name);
+            updateDesk.Parameters.AddWithValue("$updatedAt", FormatDate(now));
+            updateDesk.Parameters.AddWithValue("$id", desk.Id.ToString("D"));
+            await updateDesk.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await InsertDeskEventAsync(
+            connection,
+            sqliteTransaction,
+            desk.Id,
+            "pane.removed",
+            pane.Name,
+            $"Removed {pane.Provider} pane '{pane.Name}'"
+            + (cancelledWork == 0 ? "." : $" and cancelled {cancelledWork} active work item(s)."),
+            now,
+            cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return await GetDeskAsync(sessionName, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Desk disappeared after removing a pane.");
+    }
+
     public async Task<Desk?> GetDeskAsync(
         string sessionName,
         CancellationToken cancellationToken = default)
