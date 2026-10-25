@@ -26,7 +26,7 @@ foreach ($path in @($PackagePath, $ChecksumPath, $SbomPath)) {
 $expectedChecksum = ((Get-Content -LiteralPath $ChecksumPath -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
 $actualChecksum = (Get-FileHash -LiteralPath $PackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualChecksum -ne $expectedChecksum) {
-    throw "Checksum mismatch for $PackagePath: expected $expectedChecksum, found $actualChecksum."
+    throw "Checksum mismatch for ${PackagePath}: expected $expectedChecksum, found $actualChecksum."
 }
 
 $externalSbom = Get-Content -LiteralPath $SbomPath -Raw | ConvertFrom-Json

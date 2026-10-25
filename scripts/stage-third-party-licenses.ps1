@@ -101,7 +101,7 @@ foreach ($entry in $expectedLicenses.GetEnumerator()) {
     $licenseNode = $nuspec.package.metadata.license
     $actualLicense = if ($null -eq $licenseNode) { '' } else { [string]$licenseNode.InnerText }
     if (-not [string]::Equals($actualLicense.Trim(), [string]$entry.Value, [StringComparison]::Ordinal)) {
-        throw "License mismatch for $packageId $version: expected $($entry.Value), found '$actualLicense'."
+        throw "License mismatch for $packageId ${version}: expected $($entry.Value), found '$actualLicense'."
     }
 
     $resolved[$packageId] = [pscustomobject]@{
