@@ -112,8 +112,21 @@ jobs:
           @(
             "$env:RUNNER_TEMP/flyt-app/current/LICENSE"
             "$env:RUNNER_TEMP/flyt-app/current/THIRD-PARTY-NOTICES.md"
+            "$env:RUNNER_TEMP/flyt-app/current/licenses/README.md"
+            "$env:RUNNER_TEMP/flyt-app/current/licenses/MIT.txt"
+            "$env:RUNNER_TEMP/flyt-app/current/licenses/Apache-2.0.txt"
             "$env:RUNNER_TEMP/flyt-app/current/_manifest/spdx_2.2/manifest.spdx.json"
           ) | ForEach-Object {
             if (-not (Test-Path -LiteralPath $_)) { throw "Packaged public-release file missing: $_" }
+          }
+          $runtimeLegalFiles = Get-ChildItem `
+            "$env:RUNNER_TEMP/flyt-app/current/licenses" `
+            -File `
+            -Filter 'microsoft.netcore.app.runtime.win-x64-*'
+          if (-not ($runtimeLegalFiles.Name -match '-LICENSE(\..*)?$')) {
+            throw 'Packaged .NET runtime LICENSE is missing.'
+          }
+          if (-not ($runtimeLegalFiles.Name -match '-THIRD-PARTY-NOTICES(\..*)?$')) {
+            throw 'Packaged .NET runtime THIRD-PARTY-NOTICES is missing.'
           }
           & "$env:RUNNER_TEMP/flyt-app/current/flyt.exe" version

@@ -11,8 +11,9 @@ Security fixes target the latest release. Older pre-1.0 releases are not maintai
 
 Use [GitHub private vulnerability reporting](https://github.com/Pilvik1/Flyt/security/advisories/new).
 Do not include vulnerabilities, credentials, provider transcripts, or exploit
-details in a public issue. While the repository remains private, contact the owner
-through an existing private channel.
+details in a public issue. If GitHub's private form is unavailable during a repository
+transition, open a minimal issue requesting a private contact channel without including
+security-sensitive details.
 
 Expect an acknowledgement within seven days. No bug bounty is currently offered.
 
@@ -38,7 +39,7 @@ Expect an acknowledgement within seven days. No bug bounty is currently offered.
 
 ## Release integrity
 
-Release ZIPs have SHA-256 sidecars and an SPDX SBOM. GitHub artifact provenance is
-generated when the repository is public and the hosting plan supports attestations.
-Windows binaries are not yet Authenticode-signed; verify the checksum and provenance
-before installation.
+Release ZIPs have SHA-256 sidecars, an SPDX SBOM, and bundled third-party license and
+notice texts. Releases built after publication also receive GitHub artifact provenance
+when the hosting plan supports attestations. Windows binaries are not yet
+Authenticode-signed; verify the checksum and provenance before installation.
