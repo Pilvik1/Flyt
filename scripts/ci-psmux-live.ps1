@@ -21,6 +21,28 @@ function Invoke-LiveFlyt {
     return $output.Trim()
 }
 
+$configurationWorkspace = Join-Path $env:RUNNER_TEMP 'flyt-config-workspace'
+$configurationRepos = @(
+    (Join-Path $configurationWorkspace 'backend'),
+    (Join-Path $configurationWorkspace 'frontend')
+)
+$null = New-Item -ItemType Directory -Path $configurationRepos -Force
+Invoke-LiveFlyt desk configure `
+    --path $configurationWorkspace `
+    --name ci-multi-repo `
+    --panes 2 `
+    --providers shell,shell `
+    --working-directories ($configurationRepos -join '|') `
+    --force | Write-Host
+$configuredTemplate = Get-Content (Join-Path $configurationWorkspace '.flyt/desk.json') -Raw | ConvertFrom-Json
+$configuredPaths = @($configuredTemplate.Panes | ForEach-Object WorkingDirectory)
+if ($configuredTemplate.Name -ne 'ci-multi-repo' `
+    -or $configuredPaths.Count -ne 2 `
+    -or $configuredPaths[0] -ne $configurationRepos[0] `
+    -or $configuredPaths[1] -ne $configurationRepos[1]) {
+    throw "Guided configuration did not preserve per-pane repositories: $($configuredPaths -join ', ')"
+}
+
 $templatePath = Join-Path $env:RUNNER_TEMP 'flyt-ci-desk.json'
 $roles = @(
     @{ Name = 'planner'; Role = 'planner'; Task = 'Plan'; Tags = @('planning') },
@@ -34,15 +56,18 @@ $roles = @(
     @{ Name = 'shell-4'; Role = 'shell'; Task = 'Shell 4'; Tags = @('shell') },
     @{ Name = 'shell-5'; Role = 'shell'; Task = 'Shell 5'; Tags = @('shell') }
 )
+$roleIndex = 0
 [ordered]@{
     Name = 'ci-full-review'
     Panes = @($roles | ForEach-Object {
+        $workingDirectory = $configurationRepos[$roleIndex % $configurationRepos.Count]
+        $roleIndex++
         [ordered]@{
             Provider = 'shell'
             Name = $_.Name
             Role = $_.Role
             Task = $_.Task
-            WorkingDirectory = $WorkspacePath
+            WorkingDirectory = $workingDirectory
             Command = "Write-Output 'FLYT_READY'"
             Color = $null
             Tags = $_.Tags
@@ -83,6 +108,13 @@ try {
     $desk = @($status.registered | Where-Object sessionName -eq $DeskName)
     if ($desk.Count -ne 1 -or @($desk[0].panes).Count -ne 10) {
         throw 'Live psmux proof did not re-adopt exactly ten panes.'
+    }
+    $registeredPaths = @($desk[0].panes | ForEach-Object workingDirectory | Sort-Object -Unique)
+    $livePaths = @(& psmux list-panes -t $DeskName -F '#{pane_current_path}' | Sort-Object -Unique)
+    foreach ($expectedPath in $configurationRepos) {
+        if ($expectedPath -notin $registeredPaths -or $expectedPath -notin $livePaths) {
+            throw "Live multi-repository proof did not launch panes in $expectedPath. Registered: $($registeredPaths -join ', '); live: $($livePaths -join ', ')"
+        }
     }
     $unhealthy = @($desk[0].panes | Where-Object { $_.status -in @('Missing', 'Failed', 'Exited', 'Stopped') })
     if ($unhealthy.Count -gt 0) {
@@ -208,4 +240,4 @@ finally {
     }
 }
 
-Write-Host 'Live Windows psmux proof passed: ten panes, re-adoption, send, queue, handoffs, history, stop/reopen, and unexpected-loss recovery.'
+Write-Host 'Live Windows psmux proof passed: ten panes across multiple repositories, re-adoption, send, queue, handoffs, history, stop/reopen, and unexpected-loss recovery.'

@@ -12,8 +12,11 @@ Create `.flyt/desk.json` interactively:
 flyt desk configure --path .
 ```
 
-Use `--panes` and `--providers` for a repeatable non-interactive configuration.
-The provider list accepts `claude`, `codex`, `opencode`, and `shell`.
+The guided configurator prompts for and validates a working directory for every
+pane. It accepts `.`, `..`, `~`, absolute paths, or a numbered recent repository.
+Use `--panes`, `--providers`, and pipe-delimited `--working-directories` for a
+repeatable non-interactive configuration. The provider list accepts `claude`,
+`codex`, `opencode`, and `shell`.
 
 Launch it with `flyt desk start --template default`. A pane can define its
 provider, stable name, role, task, working directory, command, colour, tags, and

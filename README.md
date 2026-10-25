@@ -75,7 +75,7 @@ install it with Flyt, download the installer first and pass `-InstallPsmux`:
 $installer = Join-Path $env:TEMP 'install-flyt.ps1'; gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | Set-Content $installer; pwsh -NoProfile -File $installer -InstallPsmux; Remove-Item $installer
 ```
 
-Useful installer options include `-Version 0.5.2`, `-Architecture x64|arm64`,
+Useful installer options include `-Version 0.5.3`, `-Architecture x64|arm64`,
 `-SkipPathUpdate`, and local `-PackagePath` / `-ChecksumPath` inputs for offline or
 CI validation.
 
@@ -162,18 +162,25 @@ flyt desk configure --path .
 ```
 
 The guided flow asks for 1–10 panes and lets each pane run Claude, Codex,
-OpenCode, or PowerShell. It previews the configuration, writes `.flyt/desk.json`,
-and offers to open the Desk. The same operation is scriptable:
+OpenCode, or PowerShell. Each pane then gets its own validated working-directory
+prompt, so one Desk can span several repositories without hand-editing JSON.
+Enter `.`, `..`, `~`, an absolute path, or the number of a recent repository.
+Flyt previews every selected path, writes `.flyt/desk.json`, and offers to open
+the Desk. The same operation is scriptable:
 
 ```powershell
 flyt desk configure --path . --name pair --panes 2 `
-  --providers claude,codex --open
+  --providers claude,codex `
+  --working-directories "C:/src/backend|C:/src/frontend" `
+  --open
 
 flyt desk configure --path . --name large-review --panes 10 `
   --providers claude,claude,codex,codex,opencode,opencode,shell,shell,shell,shell `
+  --working-directories "C:/src/app|C:/src/app|C:/src/api|C:/src/api|C:/src/data|C:/src/data|C:/src/ops|C:/src/ops|C:/src/docs|C:/src/docs" `
   --force
 ```
 
+Separate scripted paths with `|`; the number of paths must match `--panes`.
 `--force` is required to replace an existing template non-interactively. Advanced
 users can still edit `.flyt/desk.json` directly or use `desk template init`.
 

@@ -25,6 +25,9 @@ internal static partial class Program
         var providerList = GetOption(args, "--providers") is { } rawProviders
             ? ParseConfiguredProviders(rawProviders)
             : [];
+        var configuredDirectories = GetOption(args, "--working-directories") is { } rawDirectories
+            ? ParseConfiguredWorkingDirectories(rawDirectories, workspace)
+            : [];
         var paneCount = GetOption(args, "--panes") is null
             ? providerList.Count > 0
                 ? providerList.Count
@@ -43,10 +46,22 @@ internal static partial class Program
             throw new ArgumentException(
                 $"--providers contains {providerList.Count} values but --panes is {paneCount}.");
         }
+        if (configuredDirectories.Count > 0 && configuredDirectories.Count != paneCount)
+        {
+            throw new ArgumentException(
+                $"--working-directories contains {configuredDirectories.Count} values but --panes is {paneCount}.");
+        }
 
+        var recentDirectories = interactive
+            ? await GetRecentWorkingDirectoriesAsync(store, workspace, cancellationToken).ConfigureAwait(false)
+            : [];
         var panes = interactive
-            ? PromptForPanes(paneCount)
-            : BuildConfiguredPanes(providerList);
+            ? PromptForPanes(paneCount, workspace, recentDirectories, configuredDirectories)
+            : BuildConfiguredPanes(
+                providerList,
+                configuredDirectories.Count > 0
+                    ? configuredDirectories
+                    : Enumerable.Repeat(workspace, paneCount).ToArray());
         var templateName = GetOption(args, "--name")
             ?? (interactive
                 ? AnsiConsole.Ask("Desk name?", "full-review")
@@ -106,12 +121,19 @@ internal static partial class Program
     };
 
     internal static IReadOnlyList<DeskTemplatePane> BuildConfiguredPanes(
-        IReadOnlyList<AgentProvider> providers)
+        IReadOnlyList<AgentProvider> providers,
+        IReadOnlyList<string>? workingDirectories = null)
     {
         ArgumentNullException.ThrowIfNull(providers);
         if (providers.Count is < 1 or > PsmuxLayoutPlanner.MaximumSessions)
         {
             throw new ArgumentOutOfRangeException(nameof(providers), "Choose between one and ten providers.");
+        }
+        if (workingDirectories is not null && workingDirectories.Count != providers.Count)
+        {
+            throw new ArgumentException(
+                "The number of working directories must match the number of providers.",
+                nameof(workingDirectories));
         }
 
         var counts = new Dictionary<AgentProvider, int>();
@@ -136,11 +158,64 @@ internal static partial class Program
                 name,
                 role,
                 $"{role} workspace {index + 1}",
+                WorkingDirectory: workingDirectories?[index],
                 Tags: [providerName, role]);
         }).ToArray();
     }
 
-    private static List<DeskTemplatePane> PromptForPanes(int paneCount)
+    internal static IReadOnlyList<string> ParseConfiguredWorkingDirectories(
+        string value,
+        string workspace)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspace);
+        return value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(path => ResolveWorkingDirectory(path, workspace, []))
+            .ToArray();
+    }
+
+    internal static string ResolveWorkingDirectory(
+        string value,
+        string workspace,
+        IReadOnlyList<string> recentDirectories)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspace);
+        ArgumentNullException.ThrowIfNull(recentDirectories);
+
+        var input = value.Trim().Trim('"');
+        if (int.TryParse(input, out var recentIndex)
+            && recentIndex >= 1
+            && recentIndex <= recentDirectories.Count)
+        {
+            input = recentDirectories[recentIndex - 1];
+        }
+
+        input = Environment.ExpandEnvironmentVariables(input);
+        if (input == "~" || input.StartsWith("~/", StringComparison.Ordinal) || input.StartsWith("~\\", StringComparison.Ordinal))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            input = input.Length == 1
+                ? home
+                : Path.Combine(home, input[2..]);
+        }
+
+        var resolved = Path.IsPathRooted(input)
+            ? Path.GetFullPath(input)
+            : Path.GetFullPath(input, workspace);
+        if (!Directory.Exists(resolved))
+        {
+            throw new DirectoryNotFoundException(resolved);
+        }
+
+        return resolved;
+    }
+
+    private static List<DeskTemplatePane> PromptForPanes(
+        int paneCount,
+        string workspace,
+        IReadOnlyList<string> recentDirectories,
+        IReadOnlyList<string> configuredDirectories)
     {
         var panes = new List<DeskTemplatePane>(paneCount);
         for (var index = 0; index < paneCount; index++)
@@ -169,6 +244,9 @@ internal static partial class Program
                                            StringComparison.OrdinalIgnoreCase))));
             var role = AnsiConsole.Ask("Role?", defaults.Role);
             var task = AnsiConsole.Ask("Task label?", defaults.Task);
+            var workingDirectory = configuredDirectories.Count > 0
+                ? configuredDirectories[index]
+                : PromptForWorkingDirectory(workspace, recentDirectories);
             var command = provider == AgentProvider.Shell
                 ? AnsiConsole.Ask("Shell command?", "pwsh")
                 : null;
@@ -177,11 +255,67 @@ internal static partial class Program
                 name,
                 role,
                 task,
+                WorkingDirectory: workingDirectory,
                 Command: command,
                 Tags: [provider.ToString().ToLowerInvariant(), role]));
         }
 
         return panes;
+    }
+
+    private static string PromptForWorkingDirectory(
+        string workspace,
+        IReadOnlyList<string> recentDirectories)
+    {
+        if (recentDirectories.Count > 1)
+        {
+            AnsiConsole.MarkupLine("[grey]Recent repositories (enter its number or type a path):[/]");
+            for (var index = 0; index < recentDirectories.Count; index++)
+            {
+                AnsiConsole.MarkupLine(
+                    $"  [grey]{index + 1}.[/] {Markup.Escape(recentDirectories[index])}");
+            }
+        }
+
+        var value = AnsiConsole.Prompt(
+            new TextPrompt<string>("Working directory?")
+                .DefaultValue(workspace)
+                .ValidationErrorMessage("[red]Enter an existing directory, . / .., ~, or a listed recent number.[/]")
+                .Validate(input => CanResolveWorkingDirectory(input, workspace, recentDirectories)));
+        return ResolveWorkingDirectory(value, workspace, recentDirectories);
+    }
+
+    private static bool CanResolveWorkingDirectory(
+        string value,
+        string workspace,
+        IReadOnlyList<string> recentDirectories)
+    {
+        try
+        {
+            _ = ResolveWorkingDirectory(value, workspace, recentDirectories);
+            return true;
+        }
+        catch (Exception exception) when (exception is ArgumentException or DirectoryNotFoundException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<IReadOnlyList<string>> GetRecentWorkingDirectoriesAsync(
+        FlytStateStore store,
+        string workspace,
+        CancellationToken cancellationToken)
+    {
+        var desks = await store.ListDesksAsync(cancellationToken).ConfigureAwait(false);
+        var comparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        return new[] { workspace }
+            .Concat(desks.SelectMany(desk => desk.Panes).Select(pane => pane.WorkingDirectory))
+            .Where(Directory.Exists)
+            .Distinct(comparer)
+            .Take(5)
+            .ToArray();
     }
 
     private static void PrintConfigurationPreview(DeskTemplate template)
@@ -193,7 +327,8 @@ internal static partial class Program
             .AddColumn("Provider")
             .AddColumn("Pane")
             .AddColumn("Role")
-            .AddColumn("Task");
+            .AddColumn("Task")
+            .AddColumn("Working directory");
         for (var index = 0; index < template.Panes.Count; index++)
         {
             var pane = template.Panes[index];
@@ -202,7 +337,8 @@ internal static partial class Program
                 Markup.Escape(pane.Provider.ToString()),
                 Markup.Escape(pane.Name),
                 Markup.Escape(pane.Role),
-                Markup.Escape(pane.Task));
+                Markup.Escape(pane.Task),
+                Markup.Escape(pane.WorkingDirectory ?? "."));
         }
 
         AnsiConsole.Write(table);
