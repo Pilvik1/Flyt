@@ -17,8 +17,9 @@
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512bd4.svg">
 </p>
 
-> **Status:** beta. Desk mode works and is release-gated. Mission mode has an
-> end-to-end beta path; target-host pilot evidence is still pending.
+> **Status:** Flyt is a project in progress and currently in beta. Desk mode works
+> and is release-gated. Mission mode has an end-to-end beta path; target-host pilot
+> evidence is still pending.
 
 ## Why Flyt exists
 
