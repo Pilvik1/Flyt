@@ -60,8 +60,7 @@ $requiredPackages = @(
     'SQLitePCLRaw.lib.e_sqlite3',
     'SQLitePCLRaw.provider.e_sqlite3',
     'Spectre.Console',
-    'Spectre.Console.Ansi',
-    "Microsoft.NETCore.App.Runtime.$Runtime"
+    'Spectre.Console.Ansi'
 )
 
 $resolved = [ordered]@{}
@@ -144,11 +143,51 @@ foreach ($entry in $resolved.GetEnumerator()) {
 $netCorePackage = "Microsoft.NETCore.App.Runtime.$Runtime"
 $netCorePrefix = $netCorePackage.ToLowerInvariant()
 $netCoreFiles = @(Get-ChildItem -LiteralPath $destination -File -Filter "$netCorePrefix-*")
-if (-not ($netCoreFiles.Name -match '-LICENSE(\..*)?$')) {
-    throw "The resolved $netCorePackage package did not supply a LICENSE file."
+$netCoreFileNames = @($netCoreFiles | ForEach-Object { $_.Name })
+$hasNetCoreLicense = [bool]($netCoreFileNames -match '-LICENSE(\..*)?$')
+$hasNetCoreNotices = [bool]($netCoreFileNames -match '-THIRD-PARTY-NOTICES(\..*)?$')
+if (-not $hasNetCoreLicense -or -not $hasNetCoreNotices) {
+    $dotnetCommand = Get-Command dotnet -ErrorAction Stop
+    $dotnetRootCandidates = @(
+        $env:DOTNET_ROOT,
+        (Split-Path -Parent $dotnetCommand.Source)
+    ) | Where-Object {
+        -not [string]::IsNullOrWhiteSpace($_) -and
+        (Test-Path -LiteralPath $_ -PathType Container)
+    } | Select-Object -Unique
+    $dotnetRoot = $dotnetRootCandidates | Where-Object {
+        @(Get-ChildItem -LiteralPath $_ -File | Where-Object {
+            $_.Name -match '^LICENSE(\..*)?$'
+        }).Count -gt 0 -and
+        @(Get-ChildItem -LiteralPath $_ -File | Where-Object {
+            $_.Name -match '^THIRD[-_]?PARTY[-_]?NOTICES(\..*)?$'
+        }).Count -gt 0
+    } | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($dotnetRoot)) {
+        throw 'The installed .NET distribution did not supply LICENSE and THIRD-PARTY-NOTICES files.'
+    }
+
+    $dotnetLicense = Get-ChildItem -LiteralPath $dotnetRoot -File | Where-Object {
+        $_.Name -match '^LICENSE(\..*)?$'
+    } | Select-Object -First 1
+    $dotnetNotices = Get-ChildItem -LiteralPath $dotnetRoot -File | Where-Object {
+        $_.Name -match '^THIRD[-_]?PARTY[-_]?NOTICES(\..*)?$'
+    } | Select-Object -First 1
+    Copy-Item -LiteralPath $dotnetLicense.FullName `
+        -Destination (Join-Path $destination "$netCorePrefix-LICENSE.txt") `
+        -Force
+    Copy-Item -LiteralPath $dotnetNotices.FullName `
+        -Destination (Join-Path $destination "$netCorePrefix-THIRD-PARTY-NOTICES.txt") `
+        -Force
+    $runtimeLegalFiles += 2
+    $netCoreFiles = @(Get-ChildItem -LiteralPath $destination -File -Filter "$netCorePrefix-*")
+    $netCoreFileNames = @($netCoreFiles | ForEach-Object { $_.Name })
 }
-if (-not ($netCoreFiles.Name -match '-THIRD-PARTY-NOTICES(\..*)?$')) {
-    throw "The resolved $netCorePackage package did not supply a THIRD-PARTY-NOTICES file."
+if (-not ($netCoreFileNames -match '-LICENSE(\..*)?$')) {
+    throw "The installed .NET distribution did not supply a LICENSE file for $netCorePackage."
+}
+if (-not ($netCoreFileNames -match '-THIRD-PARTY-NOTICES(\..*)?$')) {
+    throw "The installed .NET distribution did not supply a THIRD-PARTY-NOTICES file for $netCorePackage."
 }
 
 [pscustomobject]@{

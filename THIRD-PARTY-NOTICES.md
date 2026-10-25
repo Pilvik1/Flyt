@@ -4,11 +4,11 @@ Flyt's self-contained Windows packages redistribute the components below. The
 release workflow produces an SPDX SBOM with the exact package versions and file
 hashes for each architecture. Every release archive also includes the complete
 license texts in `licenses/` plus the license and third-party notices shipped by
-the resolved .NET runtime packages.
+the installed .NET SDK/runtime distribution used to build the executable.
 
 | Component | Copyright / attribution | Purpose | License | Bundled text |
 |---|---|---|---|---|
-| [.NET runtime](https://github.com/dotnet/dotnet) | © Microsoft Corporation | Self-contained runtime | MIT | Resolved runtime `LICENSE` and `THIRD-PARTY-NOTICES` files |
+| [.NET runtime](https://github.com/dotnet/dotnet) | © Microsoft Corporation | Self-contained runtime | MIT | Build distribution `LICENSE` and `THIRD-PARTY-NOTICES` files |
 | [Microsoft.Data.Sqlite](https://www.nuget.org/packages/Microsoft.Data.Sqlite) | © Microsoft Corporation | SQLite provider | MIT | `licenses/MIT.txt` |
 | [SQLitePCLRaw](https://github.com/ericsink/SQLitePCL.raw) | Copyright 2014–2024 SourceGear, LLC | Native SQLite bindings | Apache-2.0 | `licenses/Apache-2.0.txt` |
 | [SQLite](https://sqlite.org/copyright.html) | The SQLite authors | Embedded database engine | Public domain | This notice and the linked public-domain dedication |
