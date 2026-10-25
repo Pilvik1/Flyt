@@ -18,7 +18,7 @@ internal static partial class Program
             return 0;
         }
 
-        var psmux = new PsmuxClient(CommandExecutor);
+        var psmux = new PsmuxClient(CommandExecutor, presentation: PsmuxPresentationProfile.FromEnvironment());
         var store = CreateStateStore();
         await store.InitializeAsync(cancellationToken).ConfigureAwait(false);
         var providers = ProviderRegistry.CreateDefault();
@@ -107,6 +107,8 @@ internal static partial class Program
             throw new InvalidOperationException(
                 $"psmux is unavailable: {FirstNonEmpty(probe.StandardError, probe.StandardOutput)}");
         }
+
+        EnsurePsmuxCompatibility(probe, sessions.Count);
 
         var started = await psmux.StartDeskAsync(name, sessions, cancellationToken).ConfigureAwait(false);
         var now = DateTimeOffset.UtcNow;
@@ -213,7 +215,62 @@ internal static partial class Program
         CancellationToken cancellationToken)
     {
         var name = RequireOption(args, "--name");
+        var panes = await psmux.ListPanesAsync(name, cancellationToken).ConfigureAwait(false);
+        await EnsureInteractiveCompatibilityAsync(
+            psmux,
+            panes.Count,
+            HasFlag(args, "--allow-small-terminal"),
+            cancellationToken).ConfigureAwait(false);
         return await psmux.AttachAsync(name, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void EnsurePsmuxCompatibility(CommandResult probe, int paneCount)
+    {
+        var report = TerminalCompatibility.Evaluate(
+            FirstNonEmpty(probe.StandardOutput, probe.StandardError),
+            paneCount,
+            viewport: null);
+        if (!report.IsSupported)
+        {
+            throw new InvalidOperationException(string.Join(" ", report.Errors));
+        }
+    }
+
+    private static async Task EnsureInteractiveCompatibilityAsync(
+        PsmuxClient psmux,
+        int paneCount,
+        bool allowSmallTerminal,
+        CancellationToken cancellationToken)
+    {
+        var probe = await psmux.ProbeAsync(cancellationToken).ConfigureAwait(false);
+        if (!probe.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"psmux is unavailable: {FirstNonEmpty(probe.StandardError, probe.StandardOutput)}");
+        }
+
+        var report = TerminalCompatibility.Evaluate(
+            FirstNonEmpty(probe.StandardOutput, probe.StandardError),
+            paneCount,
+            TerminalCompatibility.TryGetCurrentViewport());
+        var viewportErrors = report.Errors.Where(value => value.Contains("viewport", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var blockingErrors = report.Errors.Except(viewportErrors).ToArray();
+        if (blockingErrors.Length > 0)
+        {
+            throw new InvalidOperationException(string.Join(" ", blockingErrors));
+        }
+
+        if (viewportErrors.Length > 0 && !allowSmallTerminal)
+        {
+            throw new InvalidOperationException(
+                string.Join(" ", viewportErrors)
+                + " Resize the terminal or rerun with --allow-small-terminal to override.");
+        }
+
+        foreach (var warning in report.Warnings.Concat(allowSmallTerminal ? viewportErrors : []))
+        {
+            AnsiConsole.MarkupLine($"[yellow]Compatibility warning:[/] {Markup.Escape(warning)}");
+        }
     }
 
     private static async Task<int> FocusDeskPaneAsync(

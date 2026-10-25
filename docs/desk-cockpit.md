@@ -73,10 +73,12 @@ applies and verifies the cockpit configuration without entering the full-screen 
 The action menu keeps queue state, failure receipts, history, logs, handoffs, and
 pane jumping in context instead of forcing the operator into a separate dashboard.
 
-`flyt desk watch --notify` refreshes the cockpit and emits both a native Windows
+`flyt desk watch --notify` refreshes the cockpit and requests both a native Windows
 toast and an OSC 9/BEL terminal fallback when a pane newly needs input, completes,
-or fails. Filter `status` or `watch` with `--name`, `--role`, `--tag`, `--state`,
-or `--search`. Use `flyt desk notify` to test notification delivery directly.
+or fails. A successful native request means Windows accepted it, not necessarily
+that Windows displayed it. Filter `status` or `watch` with `--name`, `--role`,
+`--tag`, `--state`, or `--search`. Use `flyt desk notify` to test API acceptance and
+`flyt doctor --interactive` to record human-visible delivery.
 
 `flyt desk focus --name NAME --next` prioritizes Needs Input, Failed, then Done.
 
@@ -132,6 +134,12 @@ the destination pane.
 
 Windows CI runs a real six-pane psmux lifecycle using shell panes and proves
 integrated chrome configuration, role/state headers, action dispatch, re-adoption,
-queueing, handoffs, history, focus persistence, stop, and reopen. The target-host
-proof remains mandatory for authenticated Claude/Codex sessions, visual ConPTY
-colour rendering, popup ergonomics, and interactive toast delivery on Håkon's machine.
+queueing, handoffs, history, focus persistence, stop/reopen, and recovery after
+unexpected psmux session loss. The target-host proof remains mandatory for
+authenticated Claude/Codex sessions, provider-specific resume, visual ConPTY colour
+rendering, popup ergonomics, and interactive toast delivery on Håkon's machine.
+
+Flyt requires psmux 3.4.0 or newer and checks the viewport before attaching. Set
+`NO_COLOR=1`, `FLYT_ASCII=1`, or `FLYT_HIGH_CONTRAST=1` before launch for the
+corresponding fallback. See [operator-guide.md](operator-guide.md) for supported
+sizes, the full keyboard map, and recovery recipes.

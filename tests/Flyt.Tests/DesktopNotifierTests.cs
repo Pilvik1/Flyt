@@ -15,7 +15,7 @@ public sealed class DesktopNotifierTests
         var result = await notifier.NotifyAsync("Flyt Desk", "reviewer needs input");
 
         Assert.True(result.NativeAttempted);
-        Assert.True(result.NativeDelivered);
+        Assert.True(result.NativeAccepted);
         var invocation = Assert.Single(executor.Invocations);
         Assert.Equal("powershell.exe", invocation.FileName);
         var arguments = invocation.Arguments.ToList();

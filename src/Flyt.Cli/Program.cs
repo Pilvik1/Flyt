@@ -46,15 +46,20 @@ internal static partial class Program
 
     private static Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
-        if (args.Length == 0 || IsHelp(args[0]))
+        if (args.Length == 0)
         {
             PrintHelp();
             return Task.FromResult(0);
         }
 
+        if (IsHelp(args[0]))
+        {
+            return Task.FromResult(PrintTopicHelp(args.Length > 1 ? args[1] : null));
+        }
+
         return args[0].ToLowerInvariant() switch
         {
-            "doctor" => RunDoctorAsync(cancellationToken),
+            "doctor" => RunDoctorAsync(args[1..], cancellationToken),
             "desk" => RunDeskAsync(args[1..], cancellationToken),
             "mission" => RunMissionAsync(args[1..], cancellationToken),
             "version" or "--version" or "-v" => Task.FromResult(PrintVersion()),
@@ -62,7 +67,7 @@ internal static partial class Program
         };
     }
 
-    private static async Task<int> RunDoctorAsync(CancellationToken cancellationToken)
+    private static async Task<int> RunDoctorAsync(string[] args, CancellationToken cancellationToken)
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
@@ -88,12 +93,17 @@ internal static partial class Program
                 probe.Version ?? probe.Error ?? "Unknown");
         }
 
-        var psmux = new PsmuxClient(CommandExecutor);
+        var psmux = new PsmuxClient(CommandExecutor, presentation: PsmuxPresentationProfile.FromEnvironment());
         var psmuxProbe = await psmux.ProbeAsync(cancellationToken).ConfigureAwait(false);
+        var psmuxVersion = TerminalCompatibility.ParsePsmuxVersion(
+            FirstNonEmpty(psmuxProbe.StandardOutput, psmuxProbe.StandardError));
+        var psmuxCompatible = psmuxProbe.IsSuccess
+                              && psmuxVersion is not null
+                              && psmuxVersion >= TerminalCompatibility.MinimumPsmuxVersion;
         AddRow(
             table,
             "psmux",
-            psmuxProbe.IsSuccess,
+            psmuxCompatible,
             FirstNonEmpty(psmuxProbe.StandardOutput, psmuxProbe.StandardError));
 
         var gitResult = await ProbeCommandAsync("git", ["--version"], cancellationToken).ConfigureAwait(false);
@@ -105,14 +115,31 @@ internal static partial class Program
 
         AnsiConsole.Write(table);
         AnsiConsole.MarkupLine(
-            "[grey]Native Windows, psmux, Claude, and Codex are required for the Phase 0 proof.[/]");
+            "[grey]Native Windows, psmux, Claude, and Codex are required for interactive target-host acceptance.[/]");
 
-        return OperatingSystem.IsWindows()
-               && providerProbes.All(probe => probe.IsAvailable)
-               && psmuxProbe.IsSuccess
-               && gitResult.IsSuccess
-            ? 0
-            : 2;
+        var ready = OperatingSystem.IsWindows()
+                    && providerProbes.All(probe => probe.IsAvailable)
+                    && psmuxCompatible
+                    && gitResult.IsSuccess;
+        if (!HasFlag(args, "--interactive"))
+        {
+            return ready ? 0 : 2;
+        }
+
+        if (!ready)
+        {
+            AnsiConsole.MarkupLine("[red]Interactive acceptance cannot start until every prerequisite is available.[/]");
+            return 2;
+        }
+
+        return await RunInteractiveAcceptanceAsync(
+            args,
+            psmux,
+            stateStore,
+            registry,
+            providerProbes,
+            psmuxProbe,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static FlytStateStore CreateStateStore() => new(StatePaths.DatabasePath);
@@ -240,34 +267,66 @@ internal static partial class Program
         return 1;
     }
 
+    private static int PrintTopicHelp(string? topic)
+    {
+        switch (topic?.ToLowerInvariant())
+        {
+            case null:
+                PrintHelp();
+                return 0;
+            case "desk":
+                PrintDeskHelp();
+                return 0;
+            case "mission":
+                PrintMissionHelp();
+                return 0;
+            case "first-run" or "quickstart":
+                AnsiConsole.MarkupLine("[bold]First run[/]");
+                AnsiConsole.MarkupLine("  1. [aqua]flyt doctor[/] — check prerequisites");
+                AnsiConsole.MarkupLine("  2. [aqua]flyt desk template init --path .[/] — create .flyt/desk.json");
+                AnsiConsole.MarkupLine("  3. [aqua]flyt desk open --path . --template default[/] — enter the cockpit");
+                AnsiConsole.MarkupLine("  4. [aqua]flyt doctor --interactive --template default[/] — prove the real Windows host");
+                return 0;
+            case "guide":
+                var installedGuide = Path.Combine(AppContext.BaseDirectory, "docs", "operator-guide.md");
+                if (File.Exists(installedGuide))
+                {
+                    AnsiConsole.MarkupLine($"Operator guide: [aqua]{Markup.Escape(installedGuide)}[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine(
+                        "Operator guide: [aqua]https://github.com/Pilvik1/FlytV1/blob/main/docs/operator-guide.md[/]");
+                }
+
+                return 0;
+            default:
+                AnsiConsole.MarkupLine($"[red]Unknown help topic:[/] {Markup.Escape(topic)}");
+                AnsiConsole.MarkupLine("Topics: [aqua]quickstart[/], [aqua]desk[/], [aqua]mission[/], [aqua]guide[/]");
+                return 1;
+        }
+    }
+
     private static void PrintHelp()
     {
         AnsiConsole.Write(
             new Panel(
                 """
-                [aqua]flyt doctor[/]                         Check the local toolchain
-                [aqua]flyt desk open [[options]][/]          Open the integrated Desk cockpit
-                [aqua]flyt desk start [[options]][/]         Create a psmux workspace
-                [aqua]flyt desk status [[--json]][/]         Reconcile registered desks
-                [aqua]flyt desk watch [[--notify]][/]        Live colour-coded cockpit
-                [aqua]flyt desk send [[selectors]][/]        Send literal text to selected panes
-                [aqua]flyt desk queue add|list|dispatch[/]   Gate queued work by resource policy
-                [aqua]flyt desk recover --name N[/]          Preview or apply recovery
-                [aqua]flyt desk reopen --name N[/]           Reopen a stopped or missing Desk
-                [aqua]flyt desk history [[--search TEXT]][/] Search durable Desk history
-                [aqua]flyt desk handoff [[options]][/]       Create a structured handoff
-                [aqua]flyt desk notify [[--text TEXT]][/]    Test native Windows notifications
-                [aqua]flyt desk attach --name NAME[/]        Take over a workspace
-                [aqua]flyt desk focus --name N --pane P[/]   Focus a registered pane
-                [aqua]flyt desk restart-pane --name N --pane P[/] Restart a pane
-                [aqua]flyt desk logs --name N --pane P[/]    Capture recent pane output
-                [aqua]flyt desk stop --name NAME[/]          Stop a workspace
-                [aqua]flyt mission create [[options]][/]     Create a durable mission
-                [aqua]flyt mission plan [[options]][/]       Persist acceptance plan
-                [aqua]flyt mission list[/]                   List missions
-                [aqua]flyt mission show --id ID[/]           Show state and events
-                [aqua]flyt mission approve --id ID[/]        Approve the plan
-                [aqua]flyt mission pause|resume|cancel[/]     Control mission lifecycle
+                [bold]FIRST TIME[/]
+                  [aqua]flyt help quickstart[/]              Four-step setup
+                  [aqua]flyt doctor[/]                       Check prerequisites
+                  [aqua]flyt doctor --interactive[/]         Prove the real Windows host
+
+                [bold]DAILY WORK[/]
+                  [aqua]flyt desk open[/]                    Enter or restore the cockpit
+                  [aqua]flyt desk status[/]                  See agents needing attention
+                  [aqua]flyt desk watch --notify[/]          Monitor without attaching
+
+                [bold]MORE COMMANDS[/]
+                  [aqua]flyt help desk[/]                    Desk operations and recovery
+                  [aqua]flyt help mission[/]                 Bounded mission workflows
+                  [aqua]flyt help guide[/]                   Locate the full operator guide
+                  [aqua]flyt version[/]                      Installed version
                 """)
                 .Header("[bold]FlytV1[/]")
                 .RoundedBorder());
@@ -275,25 +334,34 @@ internal static partial class Program
 
     private static void PrintDeskHelp()
     {
+        AnsiConsole.MarkupLine("[bold]Open and observe[/]");
         AnsiConsole.MarkupLine(
             "[aqua]flyt desk start[/] [[--name NAME]] [[--path PATH]] "
             + "[[--template NAME|PATH]] [[--sessions claude:planner,codex:reviewer]] [[--dry-run]]");
         AnsiConsole.MarkupLine(
-            "[aqua]flyt desk open[/] [[--name NAME]] [[--path PATH]] [[--template NAME|PATH]] [[--no-attach]]");
+            "[aqua]flyt desk open[/] [[--name NAME]] [[--path PATH]] [[--template NAME|PATH]] [[--no-attach]] [[--allow-small-terminal]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk status|watch[/] [[filters]] [[--json|--notify]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk attach[/] --name NAME [[--allow-small-terminal]]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[bold]Act on panes[/]");
         AnsiConsole.MarkupLine("[aqua]flyt desk focus[/] --name NAME [[--pane PANE|--next]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk restart-pane|logs[/] --name NAME --pane PANE");
         AnsiConsole.MarkupLine("[aqua]flyt desk send[/] --name N --text TEXT --pane|--role|--tag|--state|--all");
         AnsiConsole.MarkupLine("[aqua]flyt desk queue add[/] --name N --pane P --text TEXT [[--expensive]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk queue list|dispatch|cancel[/] [[options]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk handoff[/] --name N --from P --to P --goal G --action A [[--send]]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[bold]Recover and inspect[/]");
         AnsiConsole.MarkupLine("[aqua]flyt desk recover[/] --name NAME [[--apply]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk reopen[/] --name NAME");
         AnsiConsole.MarkupLine("[aqua]flyt desk failures[/] --name NAME [[--json]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk history[/] [[--name NAME]] [[--search TEXT]] [[--json]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk stop[/] --name NAME");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[bold]Setup and diagnostics[/]");
         AnsiConsole.MarkupLine("[aqua]flyt desk notify[/] [[--title TEXT]] [[--text TEXT]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk template init[/] [[--path PATH]]");
-        AnsiConsole.MarkupLine("[aqua]flyt desk handoff[/] --name N --from P --to P --goal G --action A [[--send]]");
-        AnsiConsole.MarkupLine("[aqua]flyt desk stop[/] --name NAME");
+        AnsiConsole.MarkupLine("[grey]Run 'flyt help guide' to locate the full operator guide.[/]");
     }
 
     private static void PrintMissionHelp()

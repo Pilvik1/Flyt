@@ -3,7 +3,7 @@ using Flyt.Core;
 
 namespace Flyt.Terminal;
 
-public sealed record DesktopNotificationResult(bool NativeAttempted, bool NativeDelivered, string? Error);
+public sealed record DesktopNotificationResult(bool NativeAttempted, bool NativeAccepted, string? Error);
 
 public sealed class DesktopNotifier(
     ICommandExecutor executor,

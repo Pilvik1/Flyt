@@ -100,12 +100,13 @@ public static class PsmuxLayoutPlanner
     internal static CommandInvocation TitleCommand(string executable, string paneId, string title) =>
         new(executable, ["select-pane", "-t", paneId, "-T", title]);
 
-    public static string PaneTitle(AgentSessionSpec session, DeskPaneStatus status)
+    public static string PaneTitle(AgentSessionSpec session, DeskPaneStatus status, bool unicodeEnabled = true)
     {
         ArgumentNullException.ThrowIfNull(session);
         var repository = new DirectoryInfo(session.WorkingDirectory).Name;
-        var prefix = $"{session.Name} · {session.Role.ToUpperInvariant()} · {StateGlyph(status)} {StateLabel(status)} · ";
-        var suffix = $" · {repository}";
+        var separator = unicodeEnabled ? " · " : " | ";
+        var prefix = $"{session.Name}{separator}{session.Role.ToUpperInvariant()}{separator}{StateGlyph(status, unicodeEnabled)} {StateLabel(status)}{separator}";
+        var suffix = $"{separator}{repository}";
         var available = Math.Max(8, MaximumPaneTitleLength - prefix.Length - suffix.Length);
         var task = Compact(session.Task, available);
         return $"{prefix}{task}{suffix}";
@@ -131,15 +132,31 @@ public static class PsmuxLayoutPlanner
         ? value
         : $"{value[..Math.Max(1, maximumLength - 1)].TrimEnd()}…";
 
-    private static string StateGlyph(DeskPaneStatus status) => status switch
+    private static string StateGlyph(DeskPaneStatus status, bool unicodeEnabled)
     {
-        DeskPaneStatus.Working or DeskPaneStatus.Running => "●",
-        DeskPaneStatus.NeedsInput => "!",
-        DeskPaneStatus.Done => "✓",
-        DeskPaneStatus.Failed => "×",
-        DeskPaneStatus.Starting => "◌",
-        _ => "○",
-    };
+        if (!unicodeEnabled)
+        {
+            return status switch
+            {
+                DeskPaneStatus.Working or DeskPaneStatus.Running => "*",
+                DeskPaneStatus.NeedsInput => "!",
+                DeskPaneStatus.Done => "+",
+                DeskPaneStatus.Failed => "X",
+                DeskPaneStatus.Starting => "~",
+                _ => "-",
+            };
+        }
+
+        return status switch
+        {
+            DeskPaneStatus.Working or DeskPaneStatus.Running => "●",
+            DeskPaneStatus.NeedsInput => "!",
+            DeskPaneStatus.Done => "✓",
+            DeskPaneStatus.Failed => "×",
+            DeskPaneStatus.Starting => "◌",
+            _ => "○",
+        };
+    }
 
     private static string StateLabel(DeskPaneStatus status) => status == DeskPaneStatus.NeedsInput
         ? "NEEDS INPUT"

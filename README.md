@@ -9,7 +9,7 @@ The product is optimized for one operator on Windows 11 with PowerShell 7. It is
 
 ## Current status
 
-Foundation slice under active development:
+Windows-first private beta:
 
 - .NET 10 command-line application;
 - PowerShell module wrapper;
@@ -26,11 +26,29 @@ Foundation slice under active development:
 - integrated psmux cockpit chrome with adaptive layouts, focus persistence, and action popups;
 - one-command Desk start/reopen/monitor/attach through `flyt desk open`;
 - native Windows toast notifications with terminal OSC fallback;
+- guided target-host acceptance with redacted JSON and Markdown receipts;
+- minimum viewport and psmux compatibility gates plus no-colour, ASCII, and
+  high-contrast fallbacks;
 - evidence-bearing mission state machine;
 - Manual, Bounded, and Auto policy profiles;
 - initial tests and Windows CI.
 
-Native Windows integration with psmux, Claude Code, and Codex must pass the Phase 0 proof before the project is considered usable.
+Portable and real Windows psmux lifecycle gates run in CI. Authenticated provider,
+visual, popup, and human-visible notification acceptance remains a target-host gate.
+
+## Start here
+
+```powershell
+flyt help quickstart
+flyt doctor
+flyt desk template init --path .
+flyt desk open --path . --template default
+```
+
+The complete task-oriented walkthrough is in
+[docs/operator-guide.md](docs/operator-guide.md). The CLI also provides
+`flyt help desk`, `flyt help mission`, and `flyt help guide`; the top-level help
+intentionally stays short enough to remain useful.
 
 ## Install on Windows
 
@@ -56,7 +74,7 @@ install it with Flyt, download the installer first and pass `-InstallPsmux`:
 $installer = Join-Path $env:TEMP 'install-flyt.ps1'; gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | Set-Content $installer; pwsh -NoProfile -File $installer -InstallPsmux; Remove-Item $installer
 ```
 
-Useful installer options include `-Version 0.5.0`, `-Architecture x64|arm64`,
+Useful installer options include `-Version 0.5.1`, `-Architecture x64|arm64`,
 `-SkipPathUpdate`, and local `-PackagePath` / `-ChecksumPath` inputs for offline or
 CI validation.
 
@@ -189,6 +207,8 @@ flyt desk handoff --name full-review --from builder --to reviewer `
 
 See [docs/desk-cockpit.md](docs/desk-cockpit.md) for templates, selectors,
 attention sources, colours, recovery, resource-gated queues, history, and handoffs.
+See [docs/operator-guide.md](docs/operator-guide.md) for the first-run walkthrough,
+daily recipes, keyboard map, command finder, accessibility modes, and recovery.
 
 ## Safety defaults
 
@@ -204,11 +224,16 @@ attention sources, colours, recovery, resource-gated queues, history, and handof
 
 ## Proof boundary
 
-Release builds and tests run on Ubuntu and Windows CI. This proves compilation,
-state transitions, SQLite migrations, command planning, CLI smoke behavior, and
-PowerShell module import. It does **not** prove authenticated Claude/Codex sessions,
-Windows ConPTY rendering, manual takeover, or restart re-adoption on the target
-machine. Those remain explicit Phase 0 release gates.
+Release builds and tests run on Ubuntu and Windows CI. The Windows substrate gate
+uses pinned, checksum-verified psmux and proves six unique panes, live cockpit
+configuration, targeted send, queueing, handoffs, history, re-adoption, focus
+persistence, stop/reopen, and recovery after unexpected psmux session loss.
+
+CI does **not** prove authenticated Claude/Codex sessions, provider-specific resume
+against real account state, visual ConPTY colour fidelity, popup ergonomics, manual
+takeover, or a human-visible Windows notification. Run `flyt doctor --interactive`
+on the target machine. It records those human-visible checks in a redacted receipt;
+provider resume is accepted only when a template supplies real provider session IDs.
 
 ## License
 

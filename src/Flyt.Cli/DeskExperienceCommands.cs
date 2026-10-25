@@ -89,6 +89,11 @@ internal static partial class Program
 
         desk = await store.GetDeskAsync(name, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Desk '{name}' disappeared before attach.");
+        await EnsureInteractiveCompatibilityAsync(
+            psmux,
+            desk.Panes.Count,
+            HasFlag(args, "--allow-small-terminal") || HasFlag(args, "--no-attach"),
+            cancellationToken).ConfigureAwait(false);
         await psmux.ConfigureDeskPresentationAsync(name, cancellationToken).ConfigureAwait(false);
         await psmux.ConfigureRoleBorderFormatAsync(
             name,
