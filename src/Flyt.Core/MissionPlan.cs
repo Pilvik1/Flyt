@@ -1,3 +1,7 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Flyt.Core;
 
 public sealed record MissionPlan(
@@ -9,6 +13,26 @@ public sealed record MissionPlan(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
+    public string ComputeFingerprint()
+    {
+        var canonical = new StringBuilder();
+        Append(canonical, MissionId.ToString("D"));
+        foreach (var criterion in AcceptanceCriteria)
+        {
+            Append(canonical, criterion);
+        }
+
+        canonical.Append('|');
+        foreach (var step in Steps)
+        {
+            Append(canonical, step);
+        }
+
+        Append(canonical, VerificationCommand);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString())))
+            .ToLowerInvariant();
+    }
+
     public static MissionPlan Create(
         Guid missionId,
         IEnumerable<string> acceptanceCriteria,
@@ -44,5 +68,13 @@ public sealed record MissionPlan(
         return normalized.Length > 0
             ? normalized
             : throw new ArgumentException("At least one non-empty value is required.", parameterName);
+    }
+
+    private static void Append(StringBuilder builder, string value)
+    {
+        builder.Append(value.Length.ToString(CultureInfo.InvariantCulture));
+        builder.Append(':');
+        builder.Append(value);
+        builder.Append('|');
     }
 }

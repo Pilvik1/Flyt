@@ -84,6 +84,68 @@ public sealed class FlytStateStoreTests : IDisposable
         Assert.Equal(MissionState.Planning, approved.State);
         Assert.Equal(2, approved.Version);
         Assert.NotNull(await store.GetMissionPlanAsync(mission.Id));
+
+        var executionPlan = await store.RequireApprovedMissionPlanAsync(mission.Id);
+        Assert.Equal(saved.Version, executionPlan.Approval.PlanVersion);
+        Assert.Equal(saved.ComputeFingerprint(), executionPlan.Approval.PlanFingerprint);
+        Assert.Equal(saved.ComputeFingerprint(), executionPlan.Plan.ComputeFingerprint());
+    }
+
+    [Fact]
+    public async Task ExecutionApproval_RejectsUnapprovedAndWrongStateMissions()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "state.db"));
+        await store.InitializeAsync();
+        var mission = Mission.Create("Approval boundary", _directory);
+        await store.CreateMissionAsync(mission);
+
+        var wrongState = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.RequireApprovedMissionPlanAsync(mission.Id));
+        Assert.Contains("Planning state", wrongState.Message, StringComparison.Ordinal);
+
+        var plan = MissionPlan.Create(
+            mission.Id,
+            ["Tests pass"],
+            ["Build", "Verify"],
+            "dotnet test");
+        await store.SaveMissionPlanAsync(plan);
+
+        var unapproved = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.RequireApprovedMissionPlanAsync(mission.Id));
+        Assert.Contains("Planning state", unapproved.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecutionApproval_RejectsPlanContentThatNoLongerMatchesApproval()
+    {
+        var databasePath = Path.Combine(_directory, "state.db");
+        var store = new FlytStateStore(databasePath);
+        await store.InitializeAsync();
+        var mission = Mission.Create("Approval fingerprint", _directory);
+        await store.CreateMissionAsync(mission);
+        await store.SaveMissionPlanAsync(MissionPlan.Create(
+            mission.Id,
+            ["Tests pass"],
+            ["Build", "Verify"],
+            "dotnet test"));
+        await store.ApproveMissionPlanAsync(mission.Id);
+
+        await using (var connection = new SqliteConnection($"Data Source={databasePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE mission_plans
+                SET verification_command = 'dotnet test --no-restore'
+                WHERE mission_id = $missionId;
+                """;
+            command.Parameters.AddWithValue("$missionId", mission.Id.ToString("D"));
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.RequireApprovedMissionPlanAsync(mission.Id));
+        Assert.Contains("does not match its approval", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
