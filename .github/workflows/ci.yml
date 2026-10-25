@@ -34,6 +34,31 @@ jobs:
       - run: dotnet test Flyt.slnx --configuration Release --no-build
       - name: Dependency vulnerability audit
         run: dotnet list Flyt.slnx package --vulnerable --include-transitive
+      - name: PowerShell syntax check
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem ./scripts, ./powershell `
+            -Recurse `
+            -File `
+            -Include '*.ps1', '*.psm1', '*.psd1' | ForEach-Object {
+              $tokens = $null
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                $_.FullName,
+                [ref]$tokens,
+                [ref]$errors) | Out-Null
+              foreach ($error in $errors) {
+                $failed = $true
+                Write-Error ("{0}:{1}:{2} {3}" -f `
+                  $_.FullName,
+                  $error.Extent.StartLineNumber,
+                  $error.Extent.StartColumnNumber,
+                  $error.Message)
+              }
+            }
+          if ($failed) { throw 'PowerShell syntax validation failed.' }
       - name: Install pinned psmux for live Windows proof
         if: runner.os == 'Windows'
         shell: pwsh
