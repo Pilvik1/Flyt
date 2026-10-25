@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/flyt-cockpit.svg" alt="Flyt multi-agent terminal cockpit" width="100%">
+  <img src="docs/assets/flyt-cockpit.svg" alt="Flyt multi-agent cockpit in a Windows Terminal-inspired interface" width="100%">
 </p>
 
 <h1 align="center">Flyt</h1>
