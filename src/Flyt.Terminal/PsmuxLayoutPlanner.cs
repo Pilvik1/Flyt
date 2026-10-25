@@ -4,7 +4,7 @@ namespace Flyt.Terminal;
 
 public static class PsmuxLayoutPlanner
 {
-    public const int MaximumSessions = 6;
+    public const int MaximumSessions = 10;
     public const int MaximumPaneTitleLength = 78;
 
     public static IReadOnlyList<CommandInvocation> BuildPreview(
@@ -121,8 +121,8 @@ public static class PsmuxLayoutPlanner
         2 => "even-horizontal",
         3 => "main-vertical",
         4 => "tiled",
-        5 or 6 => "tiled",
-        _ => throw new ArgumentOutOfRangeException(nameof(paneCount), "Flyt supports one to six panes."),
+        >= 5 and <= MaximumSessions => "tiled",
+        _ => throw new ArgumentOutOfRangeException(nameof(paneCount), "Flyt supports one to ten panes."),
     };
 
     internal static CommandInvocation LayoutCommand(string executable, string sessionName, int paneCount) =>

@@ -28,6 +28,25 @@ public sealed class DeskFeatureTests
     }
 
     [Fact]
+    public void Template_AcceptsTenPanesAndRejectsEleven()
+    {
+        var tenPanes = Enumerable.Range(1, 10)
+            .Select(index => new DeskTemplatePane(
+                AgentProvider.Shell,
+                $"shell-{index}",
+                "ops",
+                $"Shell {index}"))
+            .ToArray();
+        var supported = new DeskTemplate("ten", tenPanes);
+        var unsupported = new DeskTemplate(
+            "eleven",
+            [.. tenPanes, new DeskTemplatePane(AgentProvider.Shell, "shell-11", "ops", "Shell 11")]);
+
+        supported.Validate();
+        Assert.Throws<ArgumentOutOfRangeException>(unsupported.Validate);
+    }
+
+    [Fact]
     public void Template_RejectsUnsafeResourceAndPresentationValues()
     {
         var lowMemory = new DeskTemplate(
@@ -49,6 +68,7 @@ public sealed class DeskFeatureTests
 
         Assert.Equal("claude --resume 'abc-123'", registry.BuildInteractiveCommand(AgentProvider.Claude, "abc-123"));
         Assert.Equal("codex resume 'abc-123'", registry.BuildInteractiveCommand(AgentProvider.Codex, "abc-123"));
+        Assert.Equal("opencode --session 'abc-123'", registry.BuildInteractiveCommand(AgentProvider.OpenCode, "abc-123"));
         Assert.Equal("pwsh", registry.BuildInteractiveCommand(AgentProvider.Shell, "ignored"));
     }
 

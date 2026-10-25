@@ -16,6 +16,7 @@ public sealed class ProviderRegistry
     [
         new CliProviderAdapter(AgentProvider.Claude, "claude", "claude", "--version"),
         new CliProviderAdapter(AgentProvider.Codex, "codex", "codex", "--version"),
+        new CliProviderAdapter(AgentProvider.OpenCode, "opencode", "opencode", "--version"),
         new CliProviderAdapter(AgentProvider.Shell, "pwsh", "pwsh", "--version"),
     ]);
 
@@ -36,6 +37,7 @@ public sealed class ProviderRegistry
         {
             AgentProvider.Claude => $"claude --resume {quoted}",
             AgentProvider.Codex => $"codex resume {quoted}",
+            AgentProvider.OpenCode => $"opencode --session {quoted}",
             _ => Get(provider).InteractiveCommand,
         };
     }

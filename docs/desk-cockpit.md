@@ -1,16 +1,19 @@
 # Desk cockpit
 
-Flyt Desk is the human-operated session-control layer. It launches one to six
-Claude, Codex, or shell panes, keeps their identities durable, and makes the next
+Flyt Desk is the human-operated session-control layer. It launches one to ten
+Claude, Codex, OpenCode, or shell panes, keeps their identities durable, and makes the next
 required operator action visible.
 
 ## Templates
 
-Create `.flyt/desk.json`:
+Create `.flyt/desk.json` interactively:
 
 ```powershell
-flyt desk template init --path .
+flyt desk configure --path .
 ```
+
+Use `--panes` and `--providers` for a repeatable non-interactive configuration.
+The provider list accepts `claude`, `codex`, `opencode`, and `shell`.
 
 Launch it with `flyt desk start --template default`. A pane can define its
 provider, stable name, role, task, working directory, command, colour, tags, and
@@ -50,7 +53,7 @@ The integrated grid uses:
 - a heavy white/attention border and dimmed inactive panes;
 - compact `pane · ROLE · STATE · task · repo` headers;
 - an aggregate `repo/branch · agents · working · waiting · queue · RAM` status line;
-- adaptive layouts for one through six panes.
+- adaptive layouts for one through ten panes.
 
 Focus and layout metadata survive reconciliation and stop/reopen cycles. `--no-attach`
 applies and verifies the cockpit configuration without entering the full-screen client.
@@ -59,7 +62,8 @@ applies and verifies the cockpit configuration without entering the full-screen 
 
 | Keys | Action |
 |---|---|
-| `Alt+1` … `Alt+6` | Jump directly to a pane |
+| `Alt+1` … `Alt+9` | Jump directly to panes 1–9 |
+| `Alt+0` | Jump directly to pane 10 |
 | `Ctrl+b`, `A` | Focus the next pane needing attention |
 | `Ctrl+b`, `Z` | Zoom or restore the active pane |
 | `Ctrl+b`, `S` | Preview and send text |
@@ -92,8 +96,9 @@ bracketed-paste boundary and is submitted separately, preserving multiline input
 ## Recovery and failure receipts
 
 `flyt desk recover --name NAME` previews recovery. Add `--apply` to re-create a
-missing Desk, add missing panes, or restart dead panes. Claude and Codex resume
-identities are translated into provider-owned launch commands when present.
+missing Desk, add missing panes, or restart dead panes. Claude, Codex, and OpenCode resume
+identities are translated into provider-owned launch commands when present. OpenCode
+uses its documented [`--session`](https://opencode.ai/docs/cli/) interface.
 
 The first dead transition stores a failure receipt with pane identity, command,
 working directory, exit code, recent output, tracked memory, and timestamp.
@@ -132,7 +137,7 @@ working-tree diff exists. Optional decisions, verification evidence, and blocker
 travel with the bundle. `--send` pastes the artifact path and requested action into
 the destination pane.
 
-Windows CI runs a real six-pane psmux lifecycle using shell panes and proves
+Windows CI runs a real ten-pane psmux lifecycle using shell panes and proves
 integrated chrome configuration, role/state headers, action dispatch, re-adoption,
 queueing, handoffs, history, focus persistence, stop/reopen, and recovery after
 unexpected psmux session loss. The target-host proof remains mandatory for

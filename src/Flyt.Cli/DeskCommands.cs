@@ -36,6 +36,8 @@ internal static partial class Program
             "failures" => await ShowFailureReceiptsAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "history" => await ShowDeskHistoryAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "notify" => await SendTestNotificationAsync(args[1..], cancellationToken).ConfigureAwait(false),
+            "configure" => await ConfigureDeskAsync(
+                psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
             "template" => await RunDeskTemplateAsync(args[1..], cancellationToken).ConfigureAwait(false),
             "handoff" => await CreateDeskHandoffAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             "attach" => await AttachDeskAsync(psmux, args[1..], cancellationToken).ConfigureAwait(false),

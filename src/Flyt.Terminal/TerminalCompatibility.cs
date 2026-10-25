@@ -27,7 +27,9 @@ public static partial class TerminalCompatibility
         3 => new TerminalRequirement(120, 32),
         4 => new TerminalRequirement(120, 36),
         5 or 6 => new TerminalRequirement(160, 40),
-        _ => throw new ArgumentOutOfRangeException(nameof(paneCount), "Flyt supports one to six panes."),
+        7 or 8 => new TerminalRequirement(200, 48),
+        9 or 10 => new TerminalRequirement(220, 50),
+        _ => throw new ArgumentOutOfRangeException(nameof(paneCount), "Flyt supports one to ten panes."),
     };
 
     public static TerminalCompatibilityReport Evaluate(

@@ -2,7 +2,7 @@
 
 FlytV1 is a local-first PowerShell command center for agent-driven work. It combines:
 
-- **Desk mode** for running several Claude Code, Codex, or shell sessions in one psmux workspace.
+- **Desk mode** for running one to ten Claude Code, Codex, OpenCode, or shell sessions in one psmux workspace.
 - **Mission mode** for bounded plan → build → review → verify → fix → integrate workflows.
 
 The product is optimized for one operator on Windows 11 with PowerShell 7. It is private, opinionated, and built to reduce repeated copy/paste coordination between chat interfaces and terminal agents.
@@ -27,6 +27,8 @@ Windows-first private beta:
 - one-command Desk start/reopen/monitor/attach through `flyt desk open`;
 - native Windows toast notifications with terminal OSC fallback;
 - guided target-host acceptance with redacted JSON and Markdown receipts;
+- guided Desk configuration for choosing one to ten providers without editing JSON;
+- first-class Claude, Codex, OpenCode, and PowerShell panes;
 - minimum viewport and psmux compatibility gates plus no-colour, ASCII, and
   high-contrast fallbacks;
 - evidence-bearing mission state machine;
@@ -41,8 +43,7 @@ visual, popup, and human-visible notification acceptance remains a target-host g
 ```powershell
 flyt help quickstart
 flyt doctor
-flyt desk template init --path .
-flyt desk open --path . --template default
+flyt desk configure --path .
 ```
 
 The complete task-oriented walkthrough is in
@@ -74,7 +75,7 @@ install it with Flyt, download the installer first and pass `-InstallPsmux`:
 $installer = Join-Path $env:TEMP 'install-flyt.ps1'; gh api repos/Pilvik1/FlytV1/contents/scripts/install.ps1 -H "Accept: application/vnd.github.raw" | Set-Content $installer; pwsh -NoProfile -File $installer -InstallPsmux; Remove-Item $installer
 ```
 
-Useful installer options include `-Version 0.5.1`, `-Architecture x64|arm64`,
+Useful installer options include `-Version 0.5.2`, `-Architecture x64|arm64`,
 `-SkipPathUpdate`, and local `-PackagePath` / `-ChecksumPath` inputs for offline or
 CI validation.
 
@@ -113,6 +114,10 @@ $env:FLYTV1_EXE = (Resolve-Path ./src/Flyt.Cli/bin/Release/net10.0/flyt.exe)
 Test-FlytEnvironment
 ```
 
+Importing the module registers native `flyt` tab completion. Add `Import-Module Flyt`
+to your PowerShell profile to enable command, option, Desk, pane, and template
+completion in future shells.
+
 Preview a six-agent Desk layout without launching psmux:
 
 ```powershell
@@ -150,12 +155,27 @@ dotnet run --project src/Flyt.Cli -- desk logs --name demo --pane builder --line
 dotnet run --project src/Flyt.Cli -- desk restart-pane --name demo --pane builder
 ```
 
-Create a reusable repo-local template and open the integrated cockpit:
+Choose the pane count and provider for every pane, then open the integrated cockpit:
 
 ```powershell
-flyt desk template init --path .
-flyt desk open --path . --template default
+flyt desk configure --path .
 ```
+
+The guided flow asks for 1–10 panes and lets each pane run Claude, Codex,
+OpenCode, or PowerShell. It previews the configuration, writes `.flyt/desk.json`,
+and offers to open the Desk. The same operation is scriptable:
+
+```powershell
+flyt desk configure --path . --name pair --panes 2 `
+  --providers claude,codex --open
+
+flyt desk configure --path . --name large-review --panes 10 `
+  --providers claude,claude,codex,codex,opencode,opencode,shell,shell,shell,shell `
+  --force
+```
+
+`--force` is required to replace an existing template non-interactively. Advanced
+users can still edit `.flyt/desk.json` directly or use `desk template init`.
 
 `desk open` starts or reopens the Desk, restores its prior focus, starts live state
 reconciliation and queue dispatch, and attaches to psmux. The grid uses coloured
@@ -164,8 +184,8 @@ adaptive layouts, and an aggregate repo/branch/agent/queue/RAM status line.
 
 Cockpit controls use `Ctrl+b` followed by `A` (next attention), `Z` (zoom), `S`
 (send), `R` (restart), `H` (handoff), `Q` (queue), `L` (logs), or `O` (action
-menu). `Alt+1` through `Alt+6` jump directly to panes. `Ctrl+b` then `?` shows
-the psmux shortcut overlay.
+menu). `Alt+1` through `Alt+9` jump directly to panes; `Alt+0` selects pane 10.
+`Ctrl+b` then `?` shows the psmux shortcut overlay.
 
 Target selected agents without retyping a prompt in every pane:
 
@@ -225,7 +245,7 @@ daily recipes, keyboard map, command finder, accessibility modes, and recovery.
 ## Proof boundary
 
 Release builds and tests run on Ubuntu and Windows CI. The Windows substrate gate
-uses pinned, checksum-verified psmux and proves six unique panes, live cockpit
+uses pinned, checksum-verified psmux and proves ten unique panes, live cockpit
 configuration, targeted send, queueing, handoffs, history, re-adoption, focus
 persistence, stop/reopen, and recovery after unexpected psmux session loss.
 

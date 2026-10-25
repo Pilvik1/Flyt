@@ -1,5 +1,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:FlytCompletionSnapshot = $null
+$script:FlytCompletionSnapshotAt = [DateTimeOffset]::MinValue
+$script:FlytCompletionRegistered = $false
 
 function Get-FlytLaunchSpec {
     if ($env:FLYTV1_EXE) {
@@ -22,6 +25,172 @@ function Get-FlytLaunchSpec {
     }
 
     throw 'Flyt executable not found. Set FLYTV1_EXE to flyt.exe or flyt.dll.'
+}
+
+function Get-FlytCompletionSnapshot {
+    $now = [DateTimeOffset]::UtcNow
+    if ($script:FlytCompletionSnapshot -and
+        ($now - $script:FlytCompletionSnapshotAt).TotalSeconds -lt 5) {
+        return $script:FlytCompletionSnapshot
+    }
+
+    try {
+        $launch = Get-FlytLaunchSpec
+        $arguments = @($launch.Prefix) + @('desk', 'status', '--json')
+        $json = (& $launch.FileName @arguments 2>$null | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $json) {
+            $script:FlytCompletionSnapshot = $json | ConvertFrom-Json
+            $script:FlytCompletionSnapshotAt = $now
+            return $script:FlytCompletionSnapshot
+        }
+    }
+    catch {
+        # Completion must fail quietly; a broken tab key is not a diagnostic surface.
+    }
+
+    return $null
+}
+
+function Get-FlytCompletionCandidates {
+    param(
+        [Parameter(Mandatory)][string[]] $Tokens,
+        [string] $WordToComplete
+    )
+
+    $topLevel = @('doctor', 'desk', 'mission', 'help', 'version')
+    $deskCommands = @(
+        'configure', 'open', 'start', 'status', 'watch', 'send', 'queue',
+        'recover', 'reopen', 'failures', 'history', 'handoff', 'attach',
+        'focus', 'restart-pane', 'logs', 'stop', 'notify', 'template'
+    )
+    $missionCommands = @('create', 'plan', 'list', 'show', 'approve', 'pause', 'resume', 'cancel')
+    $helpTopics = @('quickstart', 'desk', 'mission', 'guide')
+    $arguments = @($Tokens | Select-Object -Skip 1)
+    $prior = @($arguments)
+    if ($WordToComplete -and $prior.Count -gt 0) {
+        $prior = @($prior | Select-Object -First ($prior.Count - 1))
+    }
+
+    $last = if ($prior.Count -gt 0) { [string]$prior[-1] } else { '' }
+    $snapshot = $null
+    $candidates = switch ($last) {
+        '--name' {
+            $snapshot = Get-FlytCompletionSnapshot
+            @($snapshot.registered | ForEach-Object sessionName)
+            break
+        }
+        '--pane' {
+            $snapshot = Get-FlytCompletionSnapshot
+            $nameIndex = [Array]::IndexOf($arguments, '--name')
+            $deskName = if ($nameIndex -ge 0 -and $nameIndex + 1 -lt $arguments.Count) {
+                $arguments[$nameIndex + 1]
+            }
+            $desk = $snapshot.registered | Where-Object sessionName -eq $deskName | Select-Object -First 1
+            if ($desk) { @($desk.panes | ForEach-Object name) } else { @() }
+            break
+        }
+        '--from' {
+            $snapshot = Get-FlytCompletionSnapshot
+            $nameIndex = [Array]::IndexOf($arguments, '--name')
+            $deskName = if ($nameIndex -ge 0 -and $nameIndex + 1 -lt $arguments.Count) {
+                $arguments[$nameIndex + 1]
+            }
+            $desk = $snapshot.registered | Where-Object sessionName -eq $deskName | Select-Object -First 1
+            if ($desk) { @($desk.panes | ForEach-Object name) } else { @() }
+            break
+        }
+        '--to' {
+            $snapshot = Get-FlytCompletionSnapshot
+            $nameIndex = [Array]::IndexOf($arguments, '--name')
+            $deskName = if ($nameIndex -ge 0 -and $nameIndex + 1 -lt $arguments.Count) {
+                $arguments[$nameIndex + 1]
+            }
+            $desk = $snapshot.registered | Where-Object sessionName -eq $deskName | Select-Object -First 1
+            if ($desk) { @($desk.panes | ForEach-Object name) } else { @() }
+            break
+        }
+        '--template' {
+            $templates = @('default')
+            $templateDirectories = @((Join-Path (Get-Location) '.flyt'))
+            $localData = [Environment]::GetFolderPath('LocalApplicationData')
+            if ($localData) { $templateDirectories += Join-Path $localData 'FlytV1/templates' }
+            foreach ($directory in $templateDirectories) {
+                if (Test-Path -LiteralPath $directory) {
+                    $templates += Get-ChildItem -LiteralPath $directory -Filter '*.json' -File |
+                        ForEach-Object BaseName
+                }
+            }
+            @($templates | Sort-Object -Unique)
+            break
+        }
+        '--providers' {
+            $providerChoices = @('claude', 'codex', 'opencode', 'shell')
+            $providerWord = [string]$WordToComplete
+            $separator = $providerWord.LastIndexOf(',')
+            $prefix = if ($separator -ge 0) { $providerWord.Substring(0, $separator + 1) } else { '' }
+            $selected = if ($separator -ge 0) {
+                @($providerWord.Substring(0, $separator).Split(',', [System.StringSplitOptions]::RemoveEmptyEntries))
+            } else { @() }
+            @($providerChoices | Where-Object { $_ -notin $selected } | ForEach-Object { "$prefix$_" })
+            break
+        }
+        '--panes' { @(1..10 | ForEach-Object { $_.ToString() }); break }
+        '--state' { @('Starting', 'Running', 'Working', 'NeedsInput', 'Idle', 'Done', 'Failed', 'Paused', 'Exited', 'Missing', 'Stopped'); break }
+        '--role' { @('planner', 'builder', 'researcher', 'reviewer', 'verifier', 'ops'); break }
+        default {
+            if ($prior.Count -eq 0) { $topLevel; break }
+            if ($prior.Count -eq 1 -and $prior[0] -eq 'desk') { $deskCommands; break }
+            if ($prior.Count -eq 1 -and $prior[0] -eq 'mission') { $missionCommands; break }
+            if ($prior.Count -eq 1 -and $prior[0] -eq 'help') { $helpTopics; break }
+            if ($prior.Count -eq 2 -and $prior[0] -eq 'desk' -and $prior[1] -eq 'queue') {
+                @('add', 'list', 'dispatch', 'cancel'); break
+            }
+            if ($prior.Count -eq 2 -and $prior[0] -eq 'desk' -and $prior[1] -eq 'template') {
+                @('init'); break
+            }
+            if ($prior.Count -ge 2 -and $prior[0] -eq 'desk') {
+                switch ($prior[1]) {
+                    'configure' { @('--path', '--name', '--panes', '--providers', '--force', '--open') }
+                    'open' { @('--name', '--path', '--template', '--no-attach', '--allow-small-terminal') }
+                    'start' { @('--name', '--path', '--template', '--sessions', '--dry-run') }
+                    'status' { @('--json') }
+                    'watch' { @('--name', '--role', '--tag', '--notify', '--interval') }
+                    'send' { @('--name', '--text', '--pane', '--role', '--tag', '--state', '--all', '--include-shell', '--no-submit', '--yes') }
+                    'recover' { @('--name', '--apply') }
+                    'reopen' { @('--name') }
+                    'attach' { @('--name', '--allow-small-terminal') }
+                    'focus' { @('--name', '--pane', '--next') }
+                    'restart-pane' { @('--name', '--pane') }
+                    'logs' { @('--name', '--pane', '--lines') }
+                    'stop' { @('--name') }
+                    default { @('--name', '--json') }
+                }
+                break
+            }
+            @()
+        }
+    }
+
+    @($candidates | Where-Object { $_ -and $_ -like "$WordToComplete*" } | Sort-Object -Unique)
+}
+
+function Enable-FlytCompletion {
+    [CmdletBinding()]
+    param()
+
+    if ($script:FlytCompletionRegistered) { return }
+    Register-ArgumentCompleter -Native -CommandName flyt -ScriptBlock {
+        param($wordToComplete, $commandAst, $cursorPosition)
+
+        $tokens = @($commandAst.CommandElements | ForEach-Object {
+            $_.Extent.Text.Trim("'`\"")
+        })
+        Get-FlytCompletionCandidates -Tokens $tokens -WordToComplete $wordToComplete |
+            ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+            }
+    }
+    $script:FlytCompletionRegistered = $true
 }
 
 function Invoke-Flyt {
@@ -440,6 +609,7 @@ function Stop-FlytMission {
 
 Export-ModuleMember -Function @(
     'Invoke-Flyt',
+    'Enable-FlytCompletion',
     'Test-FlytEnvironment',
     'Start-FlytDesk',
     'Enter-FlytDesk',
@@ -469,3 +639,5 @@ Export-ModuleMember -Function @(
     'Resume-FlytMission',
     'Stop-FlytMission'
 )
+
+Enable-FlytCompletion

@@ -48,8 +48,7 @@ internal static partial class Program
     {
         if (args.Length == 0)
         {
-            PrintHelp();
-            return Task.FromResult(0);
+            return RunHomeAsync(cancellationToken);
         }
 
         if (IsHelp(args[0]))
@@ -88,7 +87,7 @@ internal static partial class Program
         {
             AddRow(
                 table,
-                probe.Provider.ToString(),
+                probe.Provider == AgentProvider.OpenCode ? "OpenCode (optional)" : probe.Provider.ToString(),
                 probe.IsAvailable,
                 probe.Version ?? probe.Error ?? "Unknown");
         }
@@ -118,7 +117,9 @@ internal static partial class Program
             "[grey]Native Windows, psmux, Claude, and Codex are required for interactive target-host acceptance.[/]");
 
         var ready = OperatingSystem.IsWindows()
-                    && providerProbes.All(probe => probe.IsAvailable)
+                    && providerProbes
+                        .Where(probe => probe.Provider is AgentProvider.Claude or AgentProvider.Codex or AgentProvider.Shell)
+                        .All(probe => probe.IsAvailable)
                     && psmuxCompatible
                     && gitResult.IsSuccess;
         if (!HasFlag(args, "--interactive"))
@@ -180,6 +181,7 @@ internal static partial class Program
             {
                 "claude" => AgentProvider.Claude,
                 "codex" => AgentProvider.Codex,
+                "opencode" or "open-code" => AgentProvider.OpenCode,
                 "shell" or "pwsh" => AgentProvider.Shell,
                 _ => throw new ArgumentException($"Unsupported provider '{parts[0]}'."),
             };
@@ -283,7 +285,7 @@ internal static partial class Program
             case "first-run" or "quickstart":
                 AnsiConsole.MarkupLine("[bold]First run[/]");
                 AnsiConsole.MarkupLine("  1. [aqua]flyt doctor[/] — check prerequisites");
-                AnsiConsole.MarkupLine("  2. [aqua]flyt desk template init --path .[/] — create .flyt/desk.json");
+                AnsiConsole.MarkupLine("  2. [aqua]flyt desk configure --path .[/] — choose panes and providers");
                 AnsiConsole.MarkupLine("  3. [aqua]flyt desk open --path . --template default[/] — enter the cockpit");
                 AnsiConsole.MarkupLine("  4. [aqua]flyt doctor --interactive --template default[/] — prove the real Windows host");
                 return 0;
@@ -315,6 +317,7 @@ internal static partial class Program
                 [bold]FIRST TIME[/]
                   [aqua]flyt help quickstart[/]              Four-step setup
                   [aqua]flyt doctor[/]                       Check prerequisites
+                  [aqua]flyt desk configure[/]               Choose 1-10 panes and providers
                   [aqua]flyt doctor --interactive[/]         Prove the real Windows host
 
                 [bold]DAILY WORK[/]
@@ -360,6 +363,9 @@ internal static partial class Program
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[bold]Setup and diagnostics[/]");
         AnsiConsole.MarkupLine("[aqua]flyt desk notify[/] [[--title TEXT]] [[--text TEXT]]");
+        AnsiConsole.MarkupLine(
+            "[aqua]flyt desk configure[/] [[--path PATH]] [[--panes 1-10]] "
+            + "[[--providers claude,codex,opencode,shell]] [[--open]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk template init[/] [[--path PATH]]");
         AnsiConsole.MarkupLine("[grey]Run 'flyt help guide' to locate the full operator guide.[/]");
     }

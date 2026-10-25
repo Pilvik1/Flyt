@@ -232,10 +232,11 @@ public sealed class PsmuxClient(
 
         for (var index = 0; index < PsmuxLayoutPlanner.MaximumSessions; index++)
         {
+            var shortcut = index == 9 ? "0" : (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
             await RunRequiredAsync(
                 new CommandInvocation(
                     executable,
-                    ["bind-key", "-n", $"M-{index + 1}", "select-pane", "-t", $"{normalizedName}:0.{index}"]),
+                    ["bind-key", "-n", $"M-{shortcut}", "select-pane", "-t", $"{normalizedName}:0.{index}"]),
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -248,7 +249,7 @@ public sealed class PsmuxClient(
         ArgumentNullException.ThrowIfNull(panes);
         if (panes.Count is < 1 or > PsmuxLayoutPlanner.MaximumSessions)
         {
-            throw new ArgumentOutOfRangeException(nameof(panes), "Flyt supports one to six pane styles.");
+            throw new ArgumentOutOfRangeException(nameof(panes), "Flyt supports one to ten pane styles.");
         }
 
         var style = _presentation.ColorEnabled ? "#[fg=white]#[bold]" : "#[bold]";
