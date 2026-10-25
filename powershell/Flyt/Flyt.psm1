@@ -183,7 +183,7 @@ function Enable-FlytCompletion {
         param($wordToComplete, $commandAst, $cursorPosition)
 
         $tokens = @($commandAst.CommandElements | ForEach-Object {
-            $_.Extent.Text.Trim("'`\"")
+            $_.Extent.Text.Trim([char[]]@("'", '"'))
         })
         Get-FlytCompletionCandidates -Tokens $tokens -WordToComplete $wordToComplete |
             ForEach-Object {
