@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root 'src/Flyt.Cli/Flyt.Cli.csproj'
+$componentDirectory = Join-Path $root 'src'
 $moduleSource = Join-Path $root 'powershell/Flyt'
 $projectXml = [xml](Get-Content -LiteralPath $project -Raw)
 $version = [string]$projectXml.Project.PropertyGroup.Version
@@ -86,7 +87,7 @@ foreach ($generatedFile in @($packagePath, $checksumPath, $sbomPath)) {
 New-Item -ItemType Directory -Path $manifestDirectory -Force | Out-Null
 dotnet tool run sbom-tool -- generate `
     -b $stagingDirectory `
-    -bc $root `
+    -bc $componentDirectory `
     -m $manifestDirectory `
     -pn Flyt `
     -pv $version `
