@@ -7,9 +7,11 @@ small slices that can be proved independently.
 ## Current status
 
 The beta engineering path through M1-M7 is implemented. Commit, push, and draft-PR
-preparation require an explicit operator command; merge remains manual. The remaining
-release gates are the Codex app-server upgrade and the five-Mission/two-week Windows
-pilot. See [`../roadmap.md`](../roadmap.md) for the live checklist.
+preparation require an explicit operator command; merge remains manual. Codex app-server
+is implemented behind a typed, fail-closed JSONL client; the bounded `codex exec` path is
+an explicit fallback. The remaining release gates are a live app-server turn on the
+target Windows host and the five-Mission/two-week Windows pilot. See
+[`../roadmap.md`](../roadmap.md) for the live checklist.
 
 ## Operating constraints
 
@@ -55,8 +57,11 @@ plan, acceptance criteria, and worktree path; it returns a typed result containi
 provider identity, timestamps, exit status, session identity when available, and
 redacted output references.
 
-Claude headless JSON is the first target. Codex app-server follows after the host
-contract is stable.
+Claude uses bounded print-mode JSON. Codex uses app-server v2 over stdio: Flyt performs
+the initialize/thread/turn lifecycle, records thread and turn IDs, rejects invisible
+approval or input requests, interrupts on cancellation, and treats only a completed
+turn as success. Set `FLYT_CODEX_TRANSPORT=exec` only for the explicit compatibility
+fallback.
 
 **Proof gate**
 
@@ -104,6 +109,12 @@ bounded fix attempt followed by fresh verification.
 
 Add push and draft-PR preparation behind explicit approval. Keep merge manual until
 five real Missions across two weeks meet the acceptance target.
+
+Pilot receipts pair a baseline and Mission result by scenario. They record provider
+metadata, duration, attempts, review blocks, recoveries, and unplanned operator
+interventions without storing prompts or filesystem paths. `mission pilot report`
+fails closed until five paired Windows scenarios span 14 days, include recovery proof,
+retain complete evidence, and reduce interventions by at least 50%.
 
 **Proof gate**
 

@@ -55,7 +55,7 @@ public static class MissionProviderCommandBuilder
         };
     }
 
-    private static string BuildPrompt(MissionProviderRequest request)
+    public static string BuildPrompt(MissionProviderRequest request)
     {
         var prompt = new StringBuilder();
         prompt.AppendLine("You are executing one bounded Flyt Mission.");

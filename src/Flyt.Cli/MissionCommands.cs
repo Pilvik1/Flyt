@@ -30,6 +30,7 @@ internal static partial class Program
             "retry" => await RetryMissionExecutionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverMissionExecutionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "integrate" => await IntegrateMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
+            "pilot" => await RunMissionPilotAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "pause" => await TransitionMissionAsync(
                 store,
                 args[1..],
@@ -178,6 +179,23 @@ internal static partial class Program
             AnsiConsole.MarkupLine(
                 $"[grey]Latest attempt[/] {attempt.Number} / {Markup.Escape(attempt.Provider.ToString())} / "
                 + Markup.Escape(attempt.Status.ToString()));
+            if (!string.IsNullOrWhiteSpace(attempt.ProviderProtocol))
+            {
+                AnsiConsole.MarkupLine(
+                    $"[grey]Provider transport[/] {Markup.Escape(attempt.ProviderProtocol)}"
+                    + (string.IsNullOrWhiteSpace(attempt.ProviderVersion)
+                        ? string.Empty
+                        : $" / {Markup.Escape(attempt.ProviderVersion)}"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(attempt.ProviderSessionId))
+            {
+                AnsiConsole.MarkupLine(
+                    $"[grey]Provider session[/] {Markup.Escape(attempt.ProviderSessionId)}"
+                    + (string.IsNullOrWhiteSpace(attempt.ProviderTurnId)
+                        ? string.Empty
+                        : $" / turn {Markup.Escape(attempt.ProviderTurnId)}"));
+            }
         }
 
         if (receipt is not null)
@@ -245,7 +263,8 @@ internal static partial class Program
             store,
             new GitWorktreeManager(CommandExecutor, worktreeRoot),
             new MissionWorkspaceSafetyScanner(),
-            CommandExecutor);
+            CommandExecutor,
+            new RoutingMissionProviderRunner(CommandExecutor));
         var outcome = await coordinator.RunAsync(
             id,
             provider,

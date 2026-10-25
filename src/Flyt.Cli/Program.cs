@@ -390,6 +390,7 @@ internal static partial class Program
         AnsiConsole.MarkupLine(
             "[aqua]flyt mission integrate[/] --id ID --commit-message TEXT "
             + "[[--push]] [[--draft-pr]] [[--base main]]");
+        AnsiConsole.MarkupLine("[aqua]flyt mission pilot record|report[/] [[options]]");
         AnsiConsole.MarkupLine("[aqua]flyt mission pause|resume|cancel[/] --id ID");
     }
 }

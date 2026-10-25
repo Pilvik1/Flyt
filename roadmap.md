@@ -44,8 +44,9 @@ Execution order, constraints, and proof gates are defined in
 - [x] Structured brief schema and sequential persisted task plan (parallel DAG is post-beta).
 - [x] Persisted acceptance plan and enforced operator approval.
 - [x] Bounded Claude print-mode JSON adapter.
-- [ ] Codex app-server adapter.
-- [x] Bounded Codex exec JSON adapter (app-server remains future work).
+- [x] Typed Codex app-server adapter with fail-closed JSONL contract tests.
+- [ ] Live Codex app-server turn on the target Windows host.
+- [x] Bounded Codex exec JSON adapter retained as an explicit fallback.
 - [x] Git worktree manager and ownership rules.
 - [x] Hash-bound approval for repository setup and execution.
 - [x] Pause/resume/cancel with exact prior-state recovery.

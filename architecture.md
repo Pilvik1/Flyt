@@ -47,11 +47,13 @@ Every persisted state change appends a corresponding event in the same SQLite tr
 ## Provider strategy
 
 - Desk mode launches normal interactive `claude` and `codex` processes in psmux panes.
-- Mission mode uses bounded Claude print-mode JSON or Codex exec JSON commands in a
-  dedicated builder worktree. The independent reviewer runs read-only.
+- Mission mode uses bounded Claude print-mode JSON or a typed Codex app-server v2
+  client in a dedicated builder worktree. The independent reviewer runs read-only.
 - Provider exit status and review markers are persisted, but deterministic commands and
   Git evidence—not provider prose—control integration eligibility.
-- Codex app-server remains a future replacement for the current bounded CLI adapter.
+- Codex app-server runs over JSONL stdio. Flyt persists protocol/version/thread/turn
+  metadata, rejects interactive requests, and interrupts a known turn before terminating
+  a cancelled process. `codex exec` remains an explicit compatibility fallback.
 - Native Claude teams may be piloted, but do not own Flyt mission state.
 
 ## Workspace ownership
@@ -65,9 +67,10 @@ Every persisted state change appends a corresponding event in the same SQLite tr
 
 SQLite is the sole authority. Schema changes use ordered `PRAGMA user_version`
 migrations. The current schema stores missions, content-bound plan approvals,
-workspaces, provider attempts, review and verification receipts, registered Desks and
-panes, durable Desk failure receipts, and append-only Mission events. JSONL is permitted
-only as a diagnostic export.
+workspaces, provider attempts, provider session metadata, review and verification
+receipts, pilot measurements, registered Desks and panes, durable Desk failure receipts,
+and append-only Mission events. Provider JSONL is parsed in flight; it is not the system
+of record.
 
 ## Recovery contract
 
