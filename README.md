@@ -5,8 +5,8 @@
 <h1 align="center">Flyt</h1>
 
 <p align="center">
-  A keyboard-first Windows cockpit for Claude Code, Codex, OpenCode, and shell sessions.<br>
-  One Desk. Many repositories. Considerably less tab archaeology.
+  A Windows-first cockpit for Claude Code, Codex, OpenCode, and PowerShell.<br>
+  Keep several coding sessions in one Desk, even when the work spans multiple repositories.
 </p>
 
 <p align="center">
@@ -17,26 +17,25 @@
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512bd4.svg">
 </p>
 
-> **Status:** private release candidate, preparing for public source. Desk mode is
-> working and release-gated. Mission orchestration is an explicit work in progress.
+> **Status:** private while the public-release checklist is finished. Desk mode works
+> and is release-gated. Mission mode is still under construction.
 
 ## Why Flyt exists
 
-AI coding tools are useful. Five AI coding tools spread across twelve terminal tabs
-are a small administrative state. Flyt gives those sessions names, roles, repositories,
-state, recovery, and a single place to operate them.
+One coding agent is easy to keep track of. Four agents, a shell, and three repositories
+usually become a wall of tabs called "PowerShell 7". Flyt puts those sessions in one
+Desk and records what each pane is doing.
 
-- **1–10 panes:** Claude, Codex, OpenCode, or PowerShell in any mix.
-- **Multi-repository Desks:** every pane can start in a different working directory.
-- **Visible state:** role, task, provider, attention, queue, repo, branch, and memory.
-- **Keyboard control:** jump, zoom, send, restart, hand off, queue, inspect, recover.
-- **Durable recovery:** SQLite-backed identities, focus, events, queues, and bounded
-  failure receipts.
-- **Operator boundaries:** previews and approvals around broad sends and protected work.
+- Open 1–10 Claude, Codex, OpenCode, or PowerShell panes in any mix.
+- Start each pane in its own repository or working directory.
+- See the role, task, provider, repo, branch, queue, and attention state for every pane.
+- Jump, zoom, send, restart, hand off, inspect, and recover from the keyboard.
+- Restore pane identities, queues, focus, and recent failures from local SQLite state.
+- Preview broad sends and require approval for protected actions.
 
-psmux owns the terminal panes. Flyt owns the boring-but-important layer above them:
-identity, state, evidence, policy, and recovery. Boring infrastructure is underrated;
-it is also usually the part keeping the demo alive on Tuesday.
+psmux handles the terminal panes. Flyt keeps track of what they are for, where they
+belong, and how to bring them back after a restart. It is not the glamorous part of
+the agent stack, but it is useful the next morning.
 
 ## Five-minute start
 
@@ -118,7 +117,7 @@ flyt desk configure --path . --name product-review --panes 4 `
 | `Ctrl+b`, `Q` | Inspect or dispatch the queue |
 | `Ctrl+b`, `L` | View recent output |
 | `Ctrl+b`, `O` | Open the action menu |
-| `Ctrl+b`, `?` | Show shortcuts when memory has unionized |
+| `Ctrl+b`, `?` | Show the shortcut sheet |
 
 Useful commands:
 
@@ -134,9 +133,9 @@ flyt desk history --name product-review --search failure
 The complete walkthrough lives in the [operator guide](docs/operator-guide.md),
 with deeper cockpit behavior in [Desk cockpit](docs/desk-cockpit.md).
 
-## What is shipped—and what is not
+## What works today
 
-### Desk mode: shipped
+### Desk mode
 
 - adaptive one-to-ten-pane psmux layouts;
 - first-class Claude, Codex, OpenCode, and shell providers;
@@ -148,11 +147,12 @@ with deeper cockpit behavior in [Desk cockpit](docs/desk-cockpit.md).
 - ASCII, `NO_COLOR`, high-contrast, and small-terminal handling; and
 - guided target-host acceptance with redacted receipts.
 
-### Mission mode: foundation only
+### Mission mode
 
-The state machine, acceptance plan, approval, events, and pause/resume/cancel paths
-exist. Autonomous `plan → build → review → verify → integrate` execution does not.
-The [roadmap](roadmap.md) says what remains. Marketing has been asked to remain calm.
+Mission mode is not ready for day-to-day use. The state machine, acceptance plan,
+approval flow, events, and pause/resume/cancel paths exist, but Flyt does not yet run
+`plan → build → review → verify → integrate` end to end. The remaining work is tracked
+in the [roadmap](roadmap.md).
 
 ## Architecture
 
@@ -169,21 +169,21 @@ PowerShell module / flyt CLI
       SQLite event ledger
 ```
 
-Terminal text is useful evidence but never authoritative Mission state. Models can
-propose and execute work; they cannot silently approve protected actions or promote
-their own opinion into a passing verification result.
+Terminal output is useful evidence, but it is not the source of truth for a Mission.
+Models can propose and execute work. They cannot approve protected actions or mark
+their own work as verified.
 
 Read [architecture.md](architecture.md) and the decisions in [docs/decisions](docs/decisions/).
 
 ## Privacy and security
 
-Flyt has no telemetry or hosted control plane. It does store local operational data
-needed for recovery: repository paths, provider session IDs, launch commands, queue
-payloads, events, plans, and bounded failure output. Failure text is best-effort
-redacted before persistence and limited to the latest 20 receipts per Desk.
+Flyt has no telemetry and no hosted backend. Recovery data stays on the machine:
+repository paths, provider session IDs, launch commands, queue payloads, events,
+plans, and bounded failure output. Failure text is redacted on a best-effort basis
+before it is stored, and Flyt keeps only the latest 20 receipts per Desk.
 
-Provider CLIs have their own network and data flows. Flyt does not make Claude,
-Codex, or OpenCode local merely by placing them inside a tasteful border.
+The provider CLIs still follow their own network and data policies. Putting Claude,
+Codex, or OpenCode in a Flyt pane does not make it local.
 
 Read [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) before sharing state,
 receipts, screenshots, or handoffs.
@@ -213,15 +213,16 @@ remain supported for existing installations. New setups use `FLYT_EXE`,
 
 ## Release evidence
 
-Every release runs Ubuntu and Windows builds/tests. Windows CI additionally proves a
-real ten-pane psmux lifecycle, multi-repository working directories, completion,
-actions, stop/reopen, package install, and recovery after raw session loss.
+Every release runs the build and tests on Ubuntu and Windows. The Windows job also
+opens a real ten-pane psmux Desk and checks multi-repository paths, completion,
+actions, stop/reopen, package installation, and recovery after the psmux session is
+removed underneath Flyt.
 
 Release assets include:
 
 - self-contained x64 and ARM64 ZIPs;
 - SHA-256 sidecars;
-- an SPDX software bill of materials (the ingredient list); and
+- an SPDX software bill of materials (SBOM); and
 - provenance attestations once public GitHub hosting supports them for the repository.
 
 Authenticated provider resume, visual quality, popup ergonomics, and visible Windows
@@ -233,24 +234,24 @@ flyt doctor --interactive --template default
 
 ## Inspiration
 
-Flyt is inspired by:
+Two projects helped shape Flyt:
 
 - [lemonsaurus/agency](https://github.com/lemonsaurus/agency), an agent orchestration
   panel built for ultrawide, multi-agent work; and
 - [asheshgoplani/agent-deck](https://github.com/asheshgoplani/agent-deck), a terminal
   session manager for multiple coding-agent CLIs.
 
-They helped validate the core idea: agent sessions need an operating surface, not
-another pile of tabs. Flyt takes its own Windows/PowerShell, psmux, durable-state,
-multi-repository, and evidence-gated route. No source code from either project is
-included here.
+Flyt is not a fork of either project, and no source code was copied. Agency showed
+what a multi-agent operating surface could feel like; Agent Deck showed how useful a
+small terminal session manager can be. Flyt takes that idea into a Windows/PowerShell
+setup with psmux, local state, multi-repository Desks, and explicit approval gates.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and
-[SUPPORT.md](SUPPORT.md). The repository is being prepared in private; issues and
-contributions open when the publication gate is approved.
+The repository is still private, so external issues and contributions are not open
+yet. The ground rules are already in [CONTRIBUTING.md](CONTRIBUTING.md),
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SUPPORT.md](SUPPORT.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 Håkon Pilvik. Commercial use is permitted under the license.
+[MIT](LICENSE) © 2026 Håkon Pilvik.
