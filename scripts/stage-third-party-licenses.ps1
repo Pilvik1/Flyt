@@ -112,11 +112,19 @@ foreach ($entry in $expectedLicenses.GetEnumerator()) {
 }
 
 $runtimeLegalFiles = 0
+$runtimePackagePrefixes = @(
+    'Microsoft.NETCore.App.Runtime.',
+    'Microsoft.AspNetCore.App.Runtime.',
+    'Microsoft.WindowsDesktop.App.Runtime.'
+)
 foreach ($entry in $resolved.GetEnumerator()) {
-    if (-not ($entry.Key.StartsWith('Microsoft.NETCore.App.Runtime.', [StringComparison]::OrdinalIgnoreCase)
-        -or $entry.Key.StartsWith('Microsoft.AspNetCore.App.Runtime.', [StringComparison]::OrdinalIgnoreCase)
-        -or $entry.Key.StartsWith('Microsoft.WindowsDesktop.App.Runtime.', [StringComparison]::OrdinalIgnoreCase)
-        -or $entry.Key -eq 'Microsoft.NET.ILLink.Tasks')) {
+    $isRuntimePackage = $entry.Key -eq 'Microsoft.NET.ILLink.Tasks'
+    foreach ($prefix in $runtimePackagePrefixes) {
+        $isRuntimePackage = $isRuntimePackage -or $entry.Key.StartsWith(
+            $prefix,
+            [StringComparison]::OrdinalIgnoreCase)
+    }
+    if (-not $isRuntimePackage) {
         continue
     }
 
