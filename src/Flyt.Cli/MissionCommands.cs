@@ -1,6 +1,7 @@
 using System.Globalization;
 using Flyt.Core;
 using Flyt.Persistence;
+using Flyt.Terminal;
 using Spectre.Console;
 
 namespace Flyt.Cli;
@@ -25,6 +26,7 @@ internal static partial class Program
             "list" => await ListMissionsAsync(store, cancellationToken).ConfigureAwait(false),
             "show" => await ShowMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "approve" => await ApproveMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
+            "run" => await RunMissionExecutionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "pause" => await TransitionMissionAsync(
                 store,
                 args[1..],
@@ -115,6 +117,7 @@ internal static partial class Program
         }
 
         AnsiConsole.Write(table);
+
         return 0;
     }
 
@@ -154,6 +157,32 @@ internal static partial class Program
         }
 
         AnsiConsole.Write(table);
+
+        var workspace = await store.GetMissionWorkspaceAsync(id, cancellationToken).ConfigureAwait(false);
+        var attempt = await store.GetLatestMissionAttemptAsync(id, cancellationToken).ConfigureAwait(false);
+        var receipt = await store.GetLatestMissionVerificationReceiptAsync(id, cancellationToken)
+            .ConfigureAwait(false);
+        if (workspace is not null)
+        {
+            AnsiConsole.MarkupLine(
+                $"[grey]Worktree[/] {Markup.Escape(workspace.WorktreePath)} "
+                + $"[grey]Branch[/] {Markup.Escape(workspace.BranchName)}");
+        }
+
+        if (attempt is not null)
+        {
+            AnsiConsole.MarkupLine(
+                $"[grey]Latest attempt[/] {attempt.Number} / {Markup.Escape(attempt.Provider.ToString())} / "
+                + Markup.Escape(attempt.Status.ToString()));
+        }
+
+        if (receipt is not null)
+        {
+            AnsiConsole.MarkupLine(
+                $"[grey]Verification[/] {(receipt.Passed ? "[green]passed[/]" : "[red]failed[/]")} "
+                + $"([grey]exit {receipt.ExitCode}[/], {receipt.ChangedPaths.Count} changed path(s))");
+        }
+
         return 0;
     }
 
@@ -166,6 +195,60 @@ internal static partial class Program
         var mission = await store.ApproveMissionPlanAsync(id, cancellationToken).ConfigureAwait(false);
         PrintMission(mission);
         return 0;
+    }
+
+    private static async Task<int> RunMissionExecutionAsync(
+        FlytStateStore store,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        var id = ParseMissionId(RequireOption(args, "--id"));
+        var provider = (GetOption(args, "--provider") ?? "claude").ToLowerInvariant() switch
+        {
+            "claude" => AgentProvider.Claude,
+            "codex" => AgentProvider.Codex,
+            var value => throw new ArgumentException(
+                $"Unsupported Mission provider '{value}'. Expected claude or codex."),
+        };
+        var timeoutMinutes = int.Parse(
+            GetOption(args, "--timeout-minutes") ?? "90",
+            CultureInfo.InvariantCulture);
+        if (timeoutMinutes is < 1 or > 720)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(args),
+                "Mission timeout must be between 1 and 720 minutes.");
+        }
+
+        var worktreeRoot = Path.Combine(StatePaths.StateDirectory, "missions");
+        var coordinator = new MissionExecutionCoordinator(
+            store,
+            new GitWorktreeManager(CommandExecutor, worktreeRoot),
+            CommandExecutor);
+        var outcome = await coordinator.RunAsync(
+            id,
+            provider,
+            TimeSpan.FromMinutes(timeoutMinutes),
+            cancellationToken).ConfigureAwait(false);
+
+        PrintMission(outcome.Mission);
+        AnsiConsole.MarkupLine($"[grey]Worktree[/] {Markup.Escape(outcome.Workspace.WorktreePath)}");
+        AnsiConsole.MarkupLine(
+            $"[grey]Attempt[/] {outcome.Attempt.Number} / {Markup.Escape(outcome.Attempt.Status.ToString())}");
+        if (outcome.Verification is not null)
+        {
+            AnsiConsole.MarkupLine(
+                $"[grey]Verification[/] {(outcome.Verification.Passed ? "[green]passed[/]" : "[red]failed[/]")}");
+        }
+
+        if (outcome.Mission.State == MissionState.Integrating)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]Stopped before integration.[/] Inspect the diff and evidence; Flyt did not commit, push, or merge.");
+            return 0;
+        }
+
+        return 2;
     }
 
     private static async Task<int> TransitionMissionAsync(

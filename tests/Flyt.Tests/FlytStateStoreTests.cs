@@ -149,6 +149,66 @@ public sealed class FlytStateStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task MissionRuntime_PersistsWorkspaceAttemptAndRedactedVerification()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "state.db"));
+        await store.InitializeAsync();
+        var mission = Mission.Create("Runtime persistence", _directory);
+        await store.CreateMissionAsync(mission);
+        var now = DateTimeOffset.UtcNow;
+        var workspace = new MissionWorkspace(
+            mission.Id,
+            _directory,
+            Path.Combine(_directory, "worktree"),
+            "flyt/mission-test/builder",
+            "base123",
+            "head123",
+            now,
+            now);
+
+        var savedWorkspace = await store.SaveMissionWorkspaceAsync(workspace);
+        var attempt = await store.StartMissionAttemptAsync(
+            mission.Id,
+            AgentProvider.Claude,
+            1,
+            new string('a', 64));
+        var completed = await store.CompleteMissionAttemptAsync(
+            attempt.Id,
+            MissionAttemptStatus.Succeeded,
+            0,
+            "token=secret-value\nDone",
+            string.Empty);
+        var receipt = new MissionVerificationReceipt(
+            Guid.NewGuid(),
+            mission.Id,
+            attempt.Id,
+            "dotnet test",
+            0,
+            Passed: true,
+            workspace.BaseCommit,
+            workspace.HeadCommit,
+            ["src/Change.cs"],
+            "api_key=secret-value\nPassed",
+            string.Empty,
+            now,
+            DateTimeOffset.UtcNow);
+        await store.SaveMissionVerificationReceiptAsync(receipt);
+
+        var loadedWorkspace = await store.GetMissionWorkspaceAsync(mission.Id);
+        var latestAttempt = await store.GetLatestMissionAttemptAsync(mission.Id);
+        var latestReceipt = await store.GetLatestMissionVerificationReceiptAsync(mission.Id);
+
+        Assert.Equal(savedWorkspace, loadedWorkspace);
+        Assert.Equal(MissionAttemptStatus.Succeeded, completed.Status);
+        Assert.Equal(completed, latestAttempt);
+        Assert.Contains(SensitiveDataRedactor.Replacement, completed.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-value", completed.StandardOutput, StringComparison.Ordinal);
+        Assert.NotNull(latestReceipt);
+        Assert.Equal(["src/Change.cs"], latestReceipt.ChangedPaths);
+        Assert.Contains(SensitiveDataRedactor.Replacement, latestReceipt.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DeskRegistry_ReconcilesPaneIdsByStableName()
     {
         var store = new FlytStateStore(Path.Combine(_directory, "state.db"));

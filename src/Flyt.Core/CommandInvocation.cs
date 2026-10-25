@@ -2,7 +2,8 @@ namespace Flyt.Core;
 
 public sealed record CommandInvocation(
     string FileName,
-    IReadOnlyList<string> Arguments)
+    IReadOnlyList<string> Arguments,
+    string? WorkingDirectory = null)
 {
     public override string ToString() =>
         string.Join(' ', new[] { FileName }.Concat(Arguments.Select(Quote)));
@@ -12,4 +13,3 @@ public sealed record CommandInvocation(
             ? $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\""
             : value;
 }
-
