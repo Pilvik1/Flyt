@@ -112,6 +112,8 @@ flyt desk configure --path . --name product-review --panes 4 `
 | `Alt+1…9`, `Alt+0` | Jump to panes 1–10 |
 | `Ctrl+b`, `A` | Next pane needing attention |
 | `Ctrl+b`, `Z` | Zoom/unzoom the current pane |
+| `Ctrl+b`, `N` | Add a pane to the running Desk |
+| `Ctrl+b`, `X` or `x` | Close the active pane after a warning |
 | `Ctrl+b`, `S` | Send text to selected panes |
 | `Ctrl+b`, `R` | Restart the active pane |
 | `Ctrl+b`, `H` | Create a structured handoff |
@@ -125,6 +127,8 @@ Useful commands:
 ```powershell
 flyt desk open --path .
 flyt desk status
+flyt desk add-pane --name product-review --provider codex --pane reviewer-2
+flyt desk remove-pane --name product-review --pane reviewer-2
 flyt desk send --name product-review --role reviewer `
   --text 'Review the current diff' --yes
 flyt desk recover --name product-review
@@ -139,6 +143,7 @@ with deeper cockpit behavior in [Desk cockpit](docs/desk-cockpit.md).
 ### Desk mode
 
 - adaptive one-to-ten-pane psmux layouts;
+- dynamic pane addition and guarded removal while a Desk is running;
 - first-class Claude, Codex, OpenCode, and shell providers;
 - multi-repository templates and provider resume identities;
 - status reconciliation, pane focus, restart, log capture, and re-adoption;

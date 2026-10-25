@@ -49,6 +49,15 @@ public sealed class PsmuxClientTests
             value.Arguments.Contains("display-popup")
             && value.Arguments.Any(argument => argument.Contains("--action send", StringComparison.Ordinal)));
         Assert.Contains(executor.Invocations, value =>
+            value.Arguments.SequenceEqual([
+                "bind-key", "N", "display-popup", "-w", "82%", "-h", "72%", "-E",
+                "pwsh -NoProfile -Command \"flyt desk action --name daily --pane-id '#{pane_id}' --action add-pane\"",
+            ]));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments[0] == "bind-key"
+            && value.Arguments[1] == "x"
+            && value.Arguments.Any(argument => argument.Contains("--action remove-pane", StringComparison.Ordinal)));
+        Assert.Contains(executor.Invocations, value =>
             value.Arguments.SequenceEqual(["bind-key", "-n", "M-6", "select-pane", "-t", "daily:0.5"]));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.SequenceEqual(["bind-key", "-n", "M-0", "select-pane", "-t", "daily:0.9"]));
@@ -214,6 +223,18 @@ public sealed class PsmuxClientTests
         Assert.Equal("line one\nline; two", System.Text.Encoding.UTF8.GetString(
             Convert.FromBase64String(paste.Arguments[^1])));
         Assert.Equal("send-keys", executor.Invocations[1].Arguments[0]);
+    }
+
+    [Fact]
+    public async Task RemovePane_TargetsOnlyTheRequestedPane()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(executor);
+
+        await client.RemovePaneAsync("%7");
+
+        var invocation = Assert.Single(executor.Invocations);
+        Assert.Equal(["kill-pane", "-t", "%7"], invocation.Arguments);
     }
 
     [Theory]

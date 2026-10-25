@@ -41,6 +41,8 @@ internal static partial class Program
             "template" => await RunDeskTemplateAsync(args[1..], cancellationToken).ConfigureAwait(false),
             "handoff" => await CreateDeskHandoffAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             "attach" => await AttachDeskAsync(psmux, args[1..], cancellationToken).ConfigureAwait(false),
+            "add-pane" => await AddDeskPaneAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
+            "remove-pane" or "close-pane" => await RemoveDeskPaneAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
             "focus" => await FocusDeskPaneAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),
             "restart-pane" => await RestartDeskPaneAsync(psmux, store, providers, args[1..], cancellationToken).ConfigureAwait(false),
             "logs" => await ShowDeskPaneLogsAsync(psmux, store, args[1..], cancellationToken).ConfigureAwait(false),

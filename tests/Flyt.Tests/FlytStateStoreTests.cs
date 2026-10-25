@@ -512,6 +512,54 @@ public sealed class FlytStateStoreTests : IDisposable
         Assert.Contains(events, value => value.EventType == "work.completed");
     }
 
+    [Fact]
+    public async Task DeskPaneLifecycle_PersistsAdditionAndGuardedRemoval()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "pane-lifecycle.db"));
+        await store.InitializeAsync();
+        var now = DateTimeOffset.UtcNow;
+        var deskId = Guid.NewGuid();
+        DeskPane Pane(string paneId, string name) => new(
+            Guid.NewGuid(), deskId, paneId, AgentProvider.Codex, name, _directory,
+            "codex", "reviewer", "Review", "magenta", [], null,
+            DeskPaneStatus.Running, DeskStateSource.Registered, null, null, now, now, now);
+        await store.SaveDeskAsync(new Desk(
+            deskId,
+            "dynamic",
+            _directory,
+            null,
+            [],
+            2,
+            12_000,
+            DeskStatus.Running,
+            [Pane("%1", "reviewer")],
+            now,
+            now,
+            now));
+
+        var added = await store.AddDeskPaneAsync(
+            "dynamic", Pane("%2", "reviewer-2"), "even-horizontal");
+        var queued = await store.EnqueueWorkItemAsync(
+            "dynamic", "reviewer-2", "Check the diff", expensive: false);
+        var removed = await store.RemoveDeskPaneAsync(
+            "dynamic", "reviewer-2", "tiled");
+
+        Assert.Equal(2, added.Panes.Count);
+        Assert.Equal("even-horizontal", added.LayoutName);
+        Assert.Equal("reviewer", Assert.Single(removed.Panes).Name);
+        Assert.Equal("tiled", removed.LayoutName);
+        var work = Assert.Single(await store.ListWorkItemsAsync("dynamic"));
+        Assert.Equal(queued.Id, work.Id);
+        Assert.Equal(DeskWorkItemStatus.Cancelled, work.Status);
+        Assert.Equal("Pane removed by operator.", work.Outcome);
+        var events = await store.ListDeskEventsAsync("dynamic", "pane.", 100);
+        Assert.Contains(events, value => value.EventType == "pane.added");
+        Assert.Contains(events, value => value.EventType == "pane.removed");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.RemoveDeskPaneAsync("dynamic", "reviewer", "tiled"));
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

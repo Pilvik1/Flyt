@@ -347,6 +347,9 @@ internal static partial class Program
         AnsiConsole.MarkupLine("[aqua]flyt desk attach[/] --name NAME [[--allow-small-terminal]]");
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[bold]Act on panes[/]");
+        AnsiConsole.MarkupLine(
+            "[aqua]flyt desk add-pane[/] --name NAME [[--provider codex]] [[--pane NAME]] [[--role ROLE]] [[--task TASK]] [[--path PATH]]");
+        AnsiConsole.MarkupLine("[aqua]flyt desk remove-pane[/] --name NAME --pane PANE [[--yes]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk focus[/] --name NAME [[--pane PANE|--next]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk restart-pane|logs[/] --name NAME --pane PANE");
         AnsiConsole.MarkupLine("[aqua]flyt desk send[/] --name N --text TEXT --pane|--role|--tag|--state|--all");
