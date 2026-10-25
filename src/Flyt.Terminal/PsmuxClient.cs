@@ -215,6 +215,7 @@ public sealed class PsmuxClient(
         {
             (["A"], ["run-shell", "-b", PowerShellCommand($"flyt desk focus --name {normalizedName} --next")]),
             (["Z"], ["resize-pane", "-Z"]),
+            (["n"], PopupAction(normalizedName, "add-pane")),
             (["N"], PopupAction(normalizedName, "add-pane")),
             (["X"], PopupAction(normalizedName, "remove-pane")),
             (["x"], PopupAction(normalizedName, "remove-pane")),

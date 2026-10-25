@@ -174,7 +174,7 @@ sends the artifact path to the destination pane.
 | `Alt+0` | Jump directly to pane 10 |
 | `Ctrl+b`, then `A` | Jump to the next pane needing attention |
 | `Ctrl+b`, then `Z` | Zoom or restore the active pane |
-| `Ctrl+b`, then `N` | Add a pane to the running Desk |
+| `Ctrl+b`, then `n` or `N` | Add a pane to the running Desk |
 | `Ctrl+b`, then `X` or `x` | Close the active pane after a warning |
 | `Ctrl+b`, then `S` | Preview and send text |
 | `Ctrl+b`, then `R` | Restart or resume the active pane |

@@ -69,7 +69,7 @@ applies and verifies the cockpit configuration without entering the full-screen 
 | `Alt+0` | Jump directly to pane 10 |
 | `Ctrl+b`, `A` | Focus the next pane needing attention |
 | `Ctrl+b`, `Z` | Zoom or restore the active pane |
-| `Ctrl+b`, `N` | Add a pane to the running Desk |
+| `Ctrl+b`, `n` or `N` | Add a pane to the running Desk |
 | `Ctrl+b`, `X` or `x` | Close the active pane after a warning |
 | `Ctrl+b`, `S` | Preview and send text |
 | `Ctrl+b`, `R` | Confirm and restart/resume the active pane |

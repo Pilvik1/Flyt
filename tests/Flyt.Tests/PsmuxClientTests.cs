@@ -50,6 +50,11 @@ public sealed class PsmuxClientTests
             && value.Arguments.Any(argument => argument.Contains("--action send", StringComparison.Ordinal)));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.SequenceEqual([
+                "bind-key", "n", "display-popup", "-w", "82%", "-h", "72%", "-E",
+                "pwsh -NoProfile -Command \"flyt desk action --name daily --pane-id '#{pane_id}' --action add-pane\"",
+            ]));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.SequenceEqual([
                 "bind-key", "N", "display-popup", "-w", "82%", "-h", "72%", "-E",
                 "pwsh -NoProfile -Command \"flyt desk action --name daily --pane-id '#{pane_id}' --action add-pane\"",
             ]));

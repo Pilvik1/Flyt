@@ -98,6 +98,8 @@ try {
         -or $inactiveStyle -notmatch 'dim=12' `
         -or $statusLeft -notmatch 'FLYT' `
         -or $bindings -notmatch 'desk action.+--action send' `
+        -or $bindings -notmatch '(?m)^bind-key\s+-T\s+prefix\s+n\s+display-popup.+--action add-pane' `
+        -or $bindings -notmatch '(?m)^bind-key\s+-T\s+prefix\s+N\s+display-popup.+--action add-pane' `
         -or $bindings -notmatch 'M-6.+select-pane' `
         -or $bindings -notmatch 'M-0.+select-pane') {
         throw "Integrated cockpit chrome/controls were not configured: border=$borderLines format=$borderFormat window=$inactiveStyle status=$statusLeft"

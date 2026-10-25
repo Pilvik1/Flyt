@@ -112,7 +112,7 @@ flyt desk configure --path . --name product-review --panes 4 `
 | `Alt+1…9`, `Alt+0` | Jump to panes 1–10 |
 | `Ctrl+b`, `A` | Next pane needing attention |
 | `Ctrl+b`, `Z` | Zoom/unzoom the current pane |
-| `Ctrl+b`, `N` | Add a pane to the running Desk |
+| `Ctrl+b`, `n` or `N` | Add a pane to the running Desk |
 | `Ctrl+b`, `X` or `x` | Close the active pane after a warning |
 | `Ctrl+b`, `S` | Send text to selected panes |
 | `Ctrl+b`, `R` | Restart the active pane |
