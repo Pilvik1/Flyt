@@ -150,7 +150,7 @@ function Get-FlytCompletionCandidates {
             }
             if ($prior.Count -ge 2 -and $prior[0] -eq 'desk') {
                 switch ($prior[1]) {
-                    'configure' { @('--path', '--name', '--panes', '--providers', '--force', '--open') }
+                    'configure' { @('--path', '--name', '--panes', '--providers', '--working-directories', '--force', '--open') }
                     'open' { @('--name', '--path', '--template', '--no-attach', '--allow-small-terminal') }
                     'start' { @('--name', '--path', '--template', '--sessions', '--dry-run') }
                     'status' { @('--json') }

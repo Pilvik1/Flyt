@@ -365,7 +365,8 @@ internal static partial class Program
         AnsiConsole.MarkupLine("[aqua]flyt desk notify[/] [[--title TEXT]] [[--text TEXT]]");
         AnsiConsole.MarkupLine(
             "[aqua]flyt desk configure[/] [[--path PATH]] [[--panes 1-10]] "
-            + "[[--providers claude,codex,opencode,shell]] [[--open]]");
+            + "[[--providers claude,codex,opencode,shell]] "
+            + "[[--working-directories PATH1|PATH2]] [[--open]]");
         AnsiConsole.MarkupLine("[aqua]flyt desk template init[/] [[--path PATH]]");
         AnsiConsole.MarkupLine("[grey]Run 'flyt help guide' to locate the full operator guide.[/]");
     }

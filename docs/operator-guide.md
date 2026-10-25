@@ -39,7 +39,7 @@ Flyt expects Windows 11, PowerShell 7, Git, psmux 3.4.0 or newer, Claude Code,
 and Codex for the core acceptance flow. `doctor` also reports OpenCode when it is
 installed. It changes nothing on the machine.
 
-### 2. Choose panes and providers
+### 2. Choose panes, providers, and repositories
 
 From the repository you want to operate:
 
@@ -48,19 +48,25 @@ flyt desk configure --path .
 ```
 
 Choose 1–10 panes. For every pane, select Claude, Codex, OpenCode, or Shell, then
-set its name, role, and task label. Flyt previews the result and writes
+set its name, role, task label, and working directory. The directory prompt accepts
+`.`, `..`, `~`, absolute paths, and the number of a recently used repository.
+Flyt validates every directory before saving, previews the full mapping, and writes
 `.flyt/desk.json`; pane names must be unique. It can open the Desk immediately.
 
 For repeatable setup without prompts:
 
 ```powershell
 flyt desk configure --path . --name solo --panes 1 --providers claude
-flyt desk configure --path . --name pair --panes 2 --providers claude,codex
+flyt desk configure --path . --name pair --panes 2 --providers claude,codex `
+  --working-directories "C:/src/backend|C:/src/frontend"
 flyt desk configure --path . --name mixed --panes 4 `
-  --providers claude,codex,opencode,shell
+  --providers claude,codex,opencode,shell `
+  --working-directories "C:/src/app|C:/src/api|../data|C:/src/ops"
 ```
 
-Use `--force` to replace an existing template non-interactively. Use
+Separate non-interactive paths with `|`; their count must match `--panes`.
+Each provider process starts directly in its selected directory, and recovery
+restores the same location. Use `--force` to replace an existing template non-interactively. Use
 `flyt desk template init` only when you prefer to start from the opinionated
 five-pane JSON template and edit it by hand.
 

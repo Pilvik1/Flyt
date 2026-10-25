@@ -75,6 +75,11 @@ jobs:
           if ($completions -notcontains 'configure') {
             throw "Flyt native completion did not suggest 'configure': $($completions -join ', ')"
           }
+          $line = 'flyt desk configure --work'
+          $completions = (TabExpansion2 $line $line.Length).CompletionMatches.CompletionText
+          if ($completions -notcontains '--working-directories') {
+            throw "Flyt native completion did not suggest '--working-directories': $($completions -join ', ')"
+          }
       - name: Package and install smoke test
         if: runner.os == 'Windows'
         shell: pwsh
