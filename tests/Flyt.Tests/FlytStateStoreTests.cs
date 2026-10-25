@@ -8,7 +8,7 @@ public sealed class FlytStateStoreTests : IDisposable
 {
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(),
-        "flytv1-tests",
+        "flyt-tests",
         Guid.NewGuid().ToString("N"));
 
     [Fact]
@@ -191,12 +191,56 @@ public sealed class FlytStateStoreTests : IDisposable
         await store.SaveDeskAsync(desk);
         await store.AddFailureReceiptAsync(new DeskFailureReceipt(
             Guid.NewGuid(), deskId, paneId, "reviewer", AgentProvider.Codex,
-            _directory, "codex", 42, "Synthetic failure", "last output", 1024, now));
+            _directory, "codex --token=secret-value", 42, "Synthetic failure",
+            "Authorization: Bearer abcdefghijklmnop", 1024, now));
         await store.SaveDeskAsync(desk with { UpdatedAt = now.AddMinutes(1) });
 
         var receipt = Assert.Single(await store.ListFailureReceiptsAsync("failures"));
         Assert.Equal(42, receipt.ExitCode);
-        Assert.Equal("last output", receipt.RecentOutput);
+        Assert.Equal("codex --token=[REDACTED]", receipt.LaunchCommand);
+        Assert.Equal("Authorization: Bearer [REDACTED]", receipt.RecentOutput);
+    }
+
+    [Fact]
+    public async Task FailureReceipt_RetainsOnlyLatestTwentyPerDesk()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "retention.db"));
+        await store.InitializeAsync();
+        var now = DateTimeOffset.UtcNow;
+        var deskId = Guid.NewGuid();
+        var paneId = Guid.NewGuid();
+        var desk = new Desk(
+            deskId,
+            "retention",
+            _directory,
+            null,
+            [],
+            1,
+            12_000,
+            DeskStatus.Running,
+            [new DeskPane(
+                paneId, deskId, "%1", AgentProvider.Shell, "ops", _directory,
+                "pwsh", "ops", "Test", "amber", [], null,
+                DeskPaneStatus.Failed, DeskStateSource.Process, null, 1,
+                now, now, now)],
+            now,
+            now,
+            now);
+        await store.SaveDeskAsync(desk);
+
+        for (var index = 0; index < 25; index++)
+        {
+            await store.AddFailureReceiptAsync(new DeskFailureReceipt(
+                Guid.NewGuid(), deskId, paneId, "ops", AgentProvider.Shell,
+                _directory, "pwsh", 1, $"failure-{index}", $"output-{index}",
+                null, now.AddMinutes(index)));
+        }
+
+        var receipts = await store.ListFailureReceiptsAsync("retention", 100);
+
+        Assert.Equal(20, receipts.Count);
+        Assert.Equal("failure-24", receipts[0].Reason);
+        Assert.Equal("failure-5", receipts[^1].Reason);
     }
 
     [Fact]

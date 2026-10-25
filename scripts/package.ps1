@@ -27,9 +27,10 @@ if ([string]$moduleManifest.ModuleVersion -ne $version) {
 $artifactRoot = [IO.Path]::GetFullPath($OutputDirectory)
 $publishDirectory = Join-Path $artifactRoot "publish-$Runtime"
 $stagingDirectory = Join-Path $artifactRoot "staging-$Runtime"
-$packageName = "FlytV1-v$version-$Runtime.zip"
+$packageName = "Flyt-v$version-$Runtime.zip"
 $packagePath = Join-Path $artifactRoot $packageName
 $checksumPath = "$packagePath.sha256"
+$sbomPath = Join-Path $artifactRoot "Flyt-v$version-$Runtime.spdx.json"
 
 New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
 foreach ($generatedPath in @($publishDirectory, $stagingDirectory)) {
@@ -60,6 +61,8 @@ Copy-Item -LiteralPath $moduleSource -Destination (Join-Path $stagingDirectory '
 $documentationDirectory = Join-Path $stagingDirectory 'docs'
 New-Item -ItemType Directory -Path $documentationDirectory -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $stagingDirectory 'README.md')
+Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stagingDirectory 'LICENSE')
+Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $stagingDirectory 'THIRD-PARTY-NOTICES.md')
 Copy-Item -LiteralPath (Join-Path $root 'docs/operator-guide.md') -Destination $documentationDirectory
 Copy-Item -LiteralPath (Join-Path $root 'docs/desk-cockpit.md') -Destination $documentationDirectory
 $moduleTools = Join-Path $stagingDirectory 'Flyt/tools'
@@ -67,17 +70,34 @@ New-Item -ItemType Directory -Path $moduleTools -Force | Out-Null
 Copy-Item -LiteralPath $executable -Destination (Join-Path $moduleTools 'flyt.exe')
 
 [ordered]@{
-    product = 'FlytV1'
+    product = 'Flyt'
     version = $version
     runtime = $Runtime
     createdAt = (Get-Date).ToUniversalTime().ToString('O')
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stagingDirectory 'install-manifest.json') -Encoding utf8
 
-foreach ($generatedFile in @($packagePath, $checksumPath)) {
+foreach ($generatedFile in @($packagePath, $checksumPath, $sbomPath)) {
     if (Test-Path -LiteralPath $generatedFile) {
         Remove-Item -LiteralPath $generatedFile -Force
     }
 }
+
+dotnet tool run sbom-tool -- generate `
+    -b $stagingDirectory `
+    -bc $root `
+    -pn Flyt `
+    -pv $version `
+    -ps 'Håkon Pilvik' `
+    -nsb 'https://github.com/Pilvik1/Flyt'
+if ($LASTEXITCODE -ne 0) {
+    throw "SBOM generation failed for $Runtime with exit code $LASTEXITCODE."
+}
+
+$generatedSbom = Join-Path $stagingDirectory '_manifest/spdx_2.2/manifest.spdx.json'
+if (-not (Test-Path -LiteralPath $generatedSbom)) {
+    throw "Generated SBOM not found at $generatedSbom."
+}
+Copy-Item -LiteralPath $generatedSbom -Destination $sbomPath
 
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $packagePath -CompressionLevel Optimal
 $checksum = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -88,4 +108,5 @@ $checksum = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLo
     Runtime = $Runtime
     Package = $packagePath
     Checksum = $checksumPath
+    Sbom = $sbomPath
 }

@@ -830,6 +830,16 @@ public sealed class FlytStateStore
                 $id, $deskId, $paneId, $paneName, $provider, $workingDirectory,
                 $launchCommand, $exitCode, $reason, $recentOutput, $workingSetBytes, $occurredAt
             );
+
+            DELETE FROM desk_failure_receipts
+            WHERE desk_id = $deskId
+              AND id NOT IN (
+                  SELECT id
+                  FROM desk_failure_receipts
+                  WHERE desk_id = $deskId
+                  ORDER BY occurred_at DESC, rowid DESC
+                  LIMIT 20
+              );
             """;
         command.Parameters.AddWithValue("$id", receipt.Id.ToString("D"));
         command.Parameters.AddWithValue("$deskId", receipt.DeskId.ToString("D"));
@@ -837,10 +847,10 @@ public sealed class FlytStateStore
         command.Parameters.AddWithValue("$paneName", receipt.PaneName);
         command.Parameters.AddWithValue("$provider", receipt.Provider.ToString());
         command.Parameters.AddWithValue("$workingDirectory", receipt.WorkingDirectory);
-        command.Parameters.AddWithValue("$launchCommand", receipt.LaunchCommand);
+        command.Parameters.AddWithValue("$launchCommand", SensitiveDataRedactor.Redact(receipt.LaunchCommand));
         command.Parameters.AddWithValue("$exitCode", receipt.ExitCode ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$reason", receipt.Reason);
-        command.Parameters.AddWithValue("$recentOutput", receipt.RecentOutput);
+        command.Parameters.AddWithValue("$recentOutput", SensitiveDataRedactor.Redact(receipt.RecentOutput));
         command.Parameters.AddWithValue("$workingSetBytes", receipt.WorkingSetBytes ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$occurredAt", FormatDate(receipt.OccurredAt));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);

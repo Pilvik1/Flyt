@@ -1,0 +1,48 @@
+name: Bug report
+description: Report reproducible Flyt behavior
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Redact tokens, provider session IDs, prompts, usernames, and absolute paths."
+  - type: input
+    id: version
+    attributes:
+      label: Flyt version
+      placeholder: "0.6.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Windows 11, PowerShell 7.x, psmux 3.4.0"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal commands and steps, with sensitive values replaced.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, provider transcripts, session IDs, usernames, and personal paths.
+          required: true

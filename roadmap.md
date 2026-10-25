@@ -11,7 +11,7 @@
 
 ## Phase 1 — foundation repository
 
-- [x] Private repository.
+- [x] Private repository prepared for an explicit public-release gate.
 - [x] .NET 10 solution and PowerShell module structure.
 - [x] Architecture, roadmap, policy, and decision records.
 - [x] Core state machine and SQLite event ledger.
@@ -57,8 +57,9 @@
 
 ## Phase 5 — daily driver
 
-- [x] Checksum-verified Windows installer and private release/update path.
+- [x] Checksum-verified Windows installer supporting private and public releases.
 - [ ] Failure-injection tests.
-- [ ] Redaction and log retention.
+- [x] Best-effort secret redaction and bounded failure-receipt retention.
+- [x] MIT license, privacy/security docs, SBOM, and contribution surface.
 - [x] Polished terminal theme with stable role colors and task labels.
 - [ ] Five real missions across two weeks with at least 50% fewer interventions.

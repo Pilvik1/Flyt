@@ -12,19 +12,29 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release:
+    timeout-minutes: 35
     runs-on: windows-latest
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - run: dotnet tool restore
       - name: Verify tag matches package version
         shell: pwsh
         run: |
@@ -33,16 +43,27 @@ jobs:
           if ("v$version" -ne $env:RELEASE_TAG) {
             throw "Tag $env:RELEASE_TAG does not match project version v$version."
           }
-      - run: dotnet restore FlytV1.slnx
-      - run: dotnet build FlytV1.slnx --configuration Release --no-restore
-      - run: dotnet test FlytV1.slnx --configuration Release --no-build
-      - name: Build x64 and ARM64 packages
+      - run: dotnet restore Flyt.slnx
+      - run: dotnet build Flyt.slnx --configuration Release --no-restore
+      - run: dotnet format Flyt.slnx --verify-no-changes --no-restore
+      - run: dotnet test Flyt.slnx --configuration Release --no-build
+      - name: Dependency vulnerability audit
+        run: dotnet list Flyt.slnx package --vulnerable --include-transitive
+      - name: Build x64 and ARM64 packages with SBOMs
         shell: pwsh
         run: |
           ./scripts/package.ps1 -Runtime win-x64
           ./scripts/package.ps1 -Runtime win-arm64
-      - name: Publish private GitHub release
+      - name: Attest public release assets
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            artifacts/packages/*.zip
+            artifacts/packages/*.sha256
+            artifacts/packages/*.spdx.json
+      - name: Publish GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:RELEASE_TAG artifacts/packages/*.zip artifacts/packages/*.sha256 --repo "${{ github.repository }}" --verify-tag --generate-notes
+        run: gh release create $env:RELEASE_TAG artifacts/packages/*.zip artifacts/packages/*.sha256 artifacts/packages/*.spdx.json --repo "${{ github.repository }}" --verify-tag --generate-notes

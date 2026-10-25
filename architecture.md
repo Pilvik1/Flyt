@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-FlytV1 has two independently testable layers that share adapters, persistence, policies, and workspace ownership.
+Flyt has two independently testable layers that share adapters, persistence, policies, and workspace ownership.
 
 ### Desk mode
 

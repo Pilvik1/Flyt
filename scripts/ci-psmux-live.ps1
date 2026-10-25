@@ -8,7 +8,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$env:FLYTV1_STATE_DIR = Join-Path $env:RUNNER_TEMP 'flyt-live-state'
+$env:FLYT_STATE_DIR = Join-Path $env:RUNNER_TEMP 'flyt-live-state'
 
 function Invoke-LiveFlyt {
     param([Parameter(ValueFromRemainingArguments)][string[]] $Arguments)

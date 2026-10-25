@@ -61,7 +61,7 @@ public sealed class PsmuxClientTests
         var client = new PsmuxClient(executor);
 
         await client.UpdateDeskChromeAsync(
-            "daily", "FlytV1/main", "6 agents · 1 waiting", DeskPaneStatus.NeedsInput);
+            "daily", "Flyt/main", "6 agents · 1 waiting", DeskPaneStatus.NeedsInput);
 
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("status-left")

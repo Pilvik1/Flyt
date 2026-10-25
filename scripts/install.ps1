@@ -17,7 +17,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$repository = 'Pilvik1/FlytV1'
+$repository = 'Pilvik1/Flyt'
 $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) "flyt-install-$([guid]::NewGuid().ToString('N'))"
 $currentDirectory = Join-Path $InstallRoot 'current'
 $backupDirectory = Join-Path $InstallRoot ".backup-$([guid]::NewGuid().ToString('N'))"
@@ -59,15 +59,15 @@ function Get-FlytGitHubHeaders {
         }
     }
 
-    if ([string]::IsNullOrWhiteSpace($token)) {
-        throw 'FlytV1 is private. Authenticate GitHub CLI (`gh auth login`) or set FLYT_GITHUB_TOKEN before installing.'
-    }
-
-    return @{
+    $headers = @{
         Accept = 'application/vnd.github+json'
-        Authorization = "Bearer $token"
         'X-GitHub-Api-Version' = '2022-11-28'
     }
+    if (-not [string]::IsNullOrWhiteSpace($token)) {
+        $headers.Authorization = "Bearer $token"
+    }
+
+    return $headers
 }
 
 function Save-FlytReleaseAsset {
@@ -98,7 +98,7 @@ function Add-FlytToUserPath {
 }
 
 if (-not $IsWindows) {
-    throw 'FlytV1 currently supports native Windows only.'
+    throw 'Flyt currently supports native Windows only.'
 }
 
 $resolvedArchitecture = Get-FlytArchitecture
@@ -126,7 +126,7 @@ try {
 
         $release = Invoke-RestMethod -Uri $releaseUri -Headers $headers
         $releaseVersion = [string]$release.tag_name
-        $packageName = "FlytV1-$releaseVersion-$runtime.zip"
+        $packageName = "Flyt-$releaseVersion-$runtime.zip"
         $checksumName = "$packageName.sha256"
         $packageAsset = @($release.assets | Where-Object name -eq $packageName)[0]
         $checksumAsset = @($release.assets | Where-Object name -eq $checksumName)[0]
@@ -154,8 +154,8 @@ try {
     Expand-Archive -LiteralPath $downloadedPackage -DestinationPath $extractedDirectory -Force
     $manifestPath = Join-Path $extractedDirectory 'install-manifest.json'
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.product -ne 'FlytV1' -or $manifest.runtime -ne $runtime) {
-        throw "Package manifest does not match FlytV1/$runtime."
+    if ($manifest.product -notin @('Flyt', 'FlytV1') -or $manifest.runtime -ne $runtime) {
+        throw "Package manifest does not match Flyt/$runtime."
     }
 
     $executable = Join-Path $extractedDirectory 'flyt.exe'
@@ -212,7 +212,7 @@ try {
         Remove-Item -LiteralPath $moduleBackupDirectory -Recurse -Force
     }
 
-    Write-Host "FlytV1 $($manifest.version) installed successfully."
+    Write-Host "Flyt $($manifest.version) installed successfully."
     Write-Host 'Run: flyt doctor'
     if (-not (Get-Command psmux -ErrorAction SilentlyContinue)) {
         Write-Warning 'psmux was not found. Re-run with -InstallPsmux or install it before starting a Desk.'

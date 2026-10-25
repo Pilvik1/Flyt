@@ -70,7 +70,7 @@ internal static partial class Program
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .Title("[bold aqua]FlytV1 environment[/]")
+            .Title("[bold aqua]Flyt environment[/]")
             .AddColumn("Component")
             .AddColumn("Status")
             .AddColumn("Details");
@@ -258,7 +258,7 @@ internal static partial class Program
     private static int PrintVersion()
     {
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
-        AnsiConsole.WriteLine($"FlytV1 {version}");
+        AnsiConsole.WriteLine($"Flyt {version}");
         return 0;
     }
 
@@ -298,7 +298,7 @@ internal static partial class Program
                 else
                 {
                     AnsiConsole.MarkupLine(
-                        "Operator guide: [aqua]https://github.com/Pilvik1/FlytV1/blob/main/docs/operator-guide.md[/]");
+                        "Operator guide: [aqua]https://github.com/Pilvik1/Flyt/blob/main/docs/operator-guide.md[/]");
                 }
 
                 return 0;
@@ -331,7 +331,7 @@ internal static partial class Program
                   [aqua]flyt help guide[/]                   Locate the full operator guide
                   [aqua]flyt version[/]                      Installed version
                 """)
-                .Header("[bold]FlytV1[/]")
+                .Header("[bold]Flyt[/]")
                 .RoundedBorder());
     }
 
@@ -390,14 +390,17 @@ internal static class StatePaths
     {
         get
         {
-            var configured = Environment.GetEnvironmentVariable("FLYTV1_STATE_DIR");
+            var configured = Environment.GetEnvironmentVariable("FLYT_STATE_DIR")
+                ?? Environment.GetEnvironmentVariable("FLYTV1_STATE_DIR");
             if (!string.IsNullOrWhiteSpace(configured))
             {
                 return Path.GetFullPath(configured);
             }
 
             var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Path.Combine(localData, "FlytV1");
+            var current = Path.Combine(localData, "Flyt");
+            var legacy = Path.Combine(localData, "FlytV1");
+            return Directory.Exists(legacy) && !Directory.Exists(current) ? legacy : current;
         }
     }
 
