@@ -34,6 +34,31 @@ jobs:
       - run: dotnet test Flyt.slnx --configuration Release --no-build
       - name: Dependency vulnerability audit
         run: dotnet list Flyt.slnx package --vulnerable --include-transitive
+      - name: PowerShell syntax check
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem ./scripts, ./powershell `
+            -Recurse `
+            -File `
+            -Include '*.ps1', '*.psm1', '*.psd1' | ForEach-Object {
+              $tokens = $null
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                $_.FullName,
+                [ref]$tokens,
+                [ref]$errors) | Out-Null
+              foreach ($error in $errors) {
+                $failed = $true
+                Write-Error ("{0}:{1}:{2} {3}" -f `
+                  $_.FullName,
+                  $error.Extent.StartLineNumber,
+                  $error.Extent.StartColumnNumber,
+                  $error.Message)
+              }
+            }
+          if ($failed) { throw 'PowerShell syntax validation failed.' }
       - name: Install pinned psmux for live Windows proof
         if: runner.os == 'Windows'
         shell: pwsh
@@ -112,8 +137,21 @@ jobs:
           @(
             "$env:RUNNER_TEMP/flyt-app/current/LICENSE"
             "$env:RUNNER_TEMP/flyt-app/current/THIRD-PARTY-NOTICES.md"
+            "$env:RUNNER_TEMP/flyt-app/current/licenses/README.md"
+            "$env:RUNNER_TEMP/flyt-app/current/licenses/MIT.txt"
+            "$env:RUNNER_TEMP/flyt-app/current/licenses/Apache-2.0.txt"
             "$env:RUNNER_TEMP/flyt-app/current/_manifest/spdx_2.2/manifest.spdx.json"
           ) | ForEach-Object {
             if (-not (Test-Path -LiteralPath $_)) { throw "Packaged public-release file missing: $_" }
+          }
+          $runtimeLegalFiles = Get-ChildItem `
+            "$env:RUNNER_TEMP/flyt-app/current/licenses" `
+            -File `
+            -Filter 'microsoft.netcore.app.runtime.win-x64-*'
+          if (-not ($runtimeLegalFiles.Name -match '-LICENSE(\..*)?$')) {
+            throw 'Packaged .NET runtime LICENSE is missing.'
+          }
+          if (-not ($runtimeLegalFiles.Name -match '-THIRD-PARTY-NOTICES(\..*)?$')) {
+            throw 'Packaged .NET runtime THIRD-PARTY-NOTICES is missing.'
           }
           & "$env:RUNNER_TEMP/flyt-app/current/flyt.exe" version

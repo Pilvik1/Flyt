@@ -17,9 +17,8 @@
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512bd4.svg">
 </p>
 
-> **Status:** private while the public-release checklist is finished. Desk mode works
-> and is release-gated. Mission mode has an end-to-end beta path; target-host pilot
-> evidence is still pending.
+> **Status:** beta. Desk mode works and is release-gated. Mission mode has an
+> end-to-end beta path; target-host pilot evidence is still pending.
 
 ## Why Flyt exists
 
@@ -49,25 +48,26 @@ the agent stack, but it is useful the next morning.
 
 Flyt releases are self-contained; the .NET SDK is only needed for development.
 
-### Install while the repository is private
+### Install
 
-Authenticate GitHub CLI once, then download and inspect the installer before running it:
+Download and inspect the installer before running it:
+
+```powershell
+$installer = Join-Path $env:TEMP 'install-flyt.ps1'
+Invoke-WebRequest https://raw.githubusercontent.com/Pilvik1/Flyt/main/scripts/install.ps1 `
+  -OutFile $installer
+pwsh -NoProfile -File $installer -InstallPsmux
+Remove-Item $installer
+```
+
+For pre-public testing from the private repository, authenticate GitHub CLI and fetch
+the same script through the API:
 
 ```powershell
 gh auth login
 $installer = Join-Path $env:TEMP 'install-flyt.ps1'
 gh api repos/Pilvik1/Flyt/contents/scripts/install.ps1 `
   -H 'Accept: application/vnd.github.raw' | Set-Content $installer
-pwsh -NoProfile -File $installer -InstallPsmux
-Remove-Item $installer
-```
-
-When the repository becomes public, authentication is optional:
-
-```powershell
-$installer = Join-Path $env:TEMP 'install-flyt.ps1'
-Invoke-WebRequest https://raw.githubusercontent.com/Pilvik1/Flyt/main/scripts/install.ps1 `
-  -OutFile $installer
 pwsh -NoProfile -File $installer -InstallPsmux
 Remove-Item $installer
 ```
@@ -239,8 +239,9 @@ Release assets include:
 
 - self-contained x64 and ARM64 ZIPs;
 - SHA-256 sidecars;
-- an SPDX software bill of materials (SBOM); and
-- provenance attestations once public GitHub hosting supports them for the repository.
+- an SPDX software bill of materials (SBOM);
+- bundled third-party license and notice texts; and
+- GitHub provenance attestations for releases built after publication.
 
 Authenticated provider resume, visual quality, popup ergonomics, and visible Windows
 notifications remain target-machine checks:
@@ -265,9 +266,10 @@ setup with psmux, local state, multi-repository Desks, and explicit approval gat
 
 ## Contributing
 
-The repository is still private, so external issues and contributions are not open
-yet. The ground rules are already in [CONTRIBUTING.md](CONTRIBUTING.md),
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SUPPORT.md](SUPPORT.md).
+Issues and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md)
+and follow the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Support boundaries live in
+[SUPPORT.md](SUPPORT.md); security reports belong in GitHub's private vulnerability
+reporting flow described in [SECURITY.md](SECURITY.md).
 
 ## License
 

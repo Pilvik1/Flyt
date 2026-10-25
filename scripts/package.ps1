@@ -67,6 +67,11 @@ Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stag
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $stagingDirectory 'THIRD-PARTY-NOTICES.md')
 Copy-Item -LiteralPath (Join-Path $root 'docs/operator-guide.md') -Destination $documentationDirectory
 Copy-Item -LiteralPath (Join-Path $root 'docs/desk-cockpit.md') -Destination $documentationDirectory
+$assetsFile = Join-Path $root 'src/Flyt.Cli/obj/project.assets.json'
+& (Join-Path $PSScriptRoot 'stage-third-party-licenses.ps1') `
+    -Runtime $Runtime `
+    -AssetsFile $assetsFile `
+    -DestinationDirectory (Join-Path $stagingDirectory 'licenses')
 $moduleTools = Join-Path $stagingDirectory 'Flyt/tools'
 New-Item -ItemType Directory -Path $moduleTools -Force | Out-Null
 Copy-Item -LiteralPath $executable -Destination (Join-Path $moduleTools 'flyt.exe')
@@ -109,6 +114,12 @@ Copy-Item -LiteralPath $generatedSbom -Destination $sbomPath
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $packagePath -CompressionLevel Optimal
 $checksum = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
 "$checksum  $packageName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
+& (Join-Path $PSScriptRoot 'verify-package.ps1') `
+    -Runtime $Runtime `
+    -PackagePath $packagePath `
+    -ChecksumPath $checksumPath `
+    -SbomPath $sbomPath
 
 [pscustomobject]@{
     Version = $version
