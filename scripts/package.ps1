@@ -83,6 +83,7 @@ foreach ($generatedFile in @($packagePath, $checksumPath, $sbomPath)) {
     }
 }
 
+New-Item -ItemType Directory -Path $manifestDirectory -Force | Out-Null
 dotnet tool run sbom-tool -- generate `
     -b $stagingDirectory `
     -bc $root `
