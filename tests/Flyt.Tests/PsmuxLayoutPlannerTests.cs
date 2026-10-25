@@ -73,7 +73,7 @@ public sealed class PsmuxLayoutPlannerTests
         var session = AgentSessionSpec.Create(
             AgentProvider.Claude,
             "builder",
-            Path.Combine(Path.GetTempPath(), "FlytV1"),
+            Path.Combine(Path.GetTempPath(), "Flyt"),
             "claude",
             role: "builder",
             task: new string('x', 180));
@@ -81,7 +81,7 @@ public sealed class PsmuxLayoutPlannerTests
         var title = PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.NeedsInput);
 
         Assert.StartsWith("builder · BUILDER · ! NEEDS INPUT ·", title, StringComparison.Ordinal);
-        Assert.Contains("FlytV1", title, StringComparison.Ordinal);
+        Assert.Contains("Flyt", title, StringComparison.Ordinal);
         Assert.True(title.Length <= PsmuxLayoutPlanner.MaximumPaneTitleLength);
         Assert.Equal("builder", PsmuxLayoutPlanner.StableNameFromTitle(title));
     }

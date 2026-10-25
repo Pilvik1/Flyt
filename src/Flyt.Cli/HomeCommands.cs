@@ -47,7 +47,7 @@ internal static partial class Program
             Text.Empty,
             new Markup("[grey]Help[/]       [aqua]flyt help quickstart[/] · [aqua]flyt help desk[/] · [aqua]flyt help guide[/]"));
 
-        AnsiConsole.Write(new Panel(content).Header("[bold]FlytV1[/]").RoundedBorder());
+        AnsiConsole.Write(new Panel(content).Header("[bold]Flyt[/]").RoundedBorder());
         return 0;
     }
 

@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$solution = Join-Path $root 'FlytV1.slnx'
+$solution = Join-Path $root 'Flyt.slnx'
 
 dotnet restore $solution
 dotnet build $solution --configuration $Configuration --no-restore

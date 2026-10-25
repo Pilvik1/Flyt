@@ -1,11 +1,11 @@
 @{
     RootModule = 'Flyt.psm1'
-    ModuleVersion = '0.5.3'
+    ModuleVersion = '0.5.4'
     GUID = '6f86803f-14bf-483b-80fd-b6376b775481'
     Author = 'Håkon Pilvik'
     CompanyName = 'HomeBase'
-    Copyright = '(c) 2026 Håkon Pilvik. All rights reserved.'
-    Description = 'PowerShell command surface for the FlytV1 local multi-agent console.'
+    Copyright = '(c) 2026 Håkon Pilvik. MIT licensed.'
+    Description = 'PowerShell command surface for the Flyt local multi-agent console.'
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
         'Invoke-Flyt',
@@ -45,7 +45,8 @@
     PrivateData = @{
         PSData = @{
             Tags = @('AI', 'Agents', 'Claude', 'Codex', 'psmux')
-            ProjectUri = 'https://github.com/Pilvik1/FlytV1'
+            LicenseUri = 'https://github.com/Pilvik1/Flyt/blob/main/LICENSE'
+            ProjectUri = 'https://github.com/Pilvik1/Flyt'
         }
     }
 }

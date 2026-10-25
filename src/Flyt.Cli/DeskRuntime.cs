@@ -226,10 +226,10 @@ internal static class DeskRuntime
                 pane.Name,
                 pane.Provider,
                 pane.WorkingDirectory,
-                pane.LaunchCommand,
+                SensitiveDataRedactor.Redact(pane.LaunchCommand),
                 runtime.ExitCode,
                 reason,
-                output,
+                SensitiveDataRedactor.Redact(output),
                 resources.WorkingSetBytes,
                 DateTimeOffset.UtcNow),
             cancellationToken).ConfigureAwait(false);

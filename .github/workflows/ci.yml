@@ -8,20 +8,32 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test:
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: 10.0.x
-      - run: dotnet restore FlytV1.slnx
-      - run: dotnet build FlytV1.slnx --configuration Release --no-restore
-      - run: dotnet test FlytV1.slnx --configuration Release --no-build
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - run: dotnet tool restore
+      - run: dotnet restore Flyt.slnx
+      - run: dotnet build Flyt.slnx --configuration Release --no-restore
+      - run: dotnet format Flyt.slnx --verify-no-changes --no-restore
+      - run: dotnet test Flyt.slnx --configuration Release --no-build
+      - name: Dependency vulnerability audit
+        run: dotnet list Flyt.slnx package --vulnerable --include-transitive
       - name: Install pinned psmux for live Windows proof
         if: runner.os == 'Windows'
         shell: pwsh
@@ -85,7 +97,11 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/package.ps1 -Runtime win-x64
-          $package = Get-ChildItem ./artifacts/packages/FlytV1-*-win-x64.zip -File -ErrorAction Stop | Select-Object -First 1
+          $package = Get-ChildItem ./artifacts/packages/Flyt-*-win-x64.zip -File -ErrorAction Stop | Select-Object -First 1
+          $sbom = Get-ChildItem ./artifacts/packages/Flyt-*-win-x64.spdx.json -File -ErrorAction Stop | Select-Object -First 1
+          if ((Get-Content $sbom.FullName -Raw | ConvertFrom-Json).spdxVersion -ne 'SPDX-2.2') {
+            throw 'Package SBOM is not SPDX 2.2.'
+          }
           ./scripts/install.ps1 `
             -PackagePath $package.FullName `
             -ChecksumPath "$($package.FullName).sha256" `
@@ -93,4 +109,11 @@ jobs:
             -ModuleRoot "$env:RUNNER_TEMP/flyt-modules/Flyt" `
             -SkipPathUpdate `
             -NonInteractive
+          @(
+            "$env:RUNNER_TEMP/flyt-app/current/LICENSE"
+            "$env:RUNNER_TEMP/flyt-app/current/THIRD-PARTY-NOTICES.md"
+            "$env:RUNNER_TEMP/flyt-app/current/_manifest/spdx_2.2/manifest.spdx.json"
+          ) | ForEach-Object {
+            if (-not (Test-Path -LiteralPath $_)) { throw "Packaged public-release file missing: $_" }
+          }
           & "$env:RUNNER_TEMP/flyt-app/current/flyt.exe" version

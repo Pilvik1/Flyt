@@ -5,8 +5,9 @@ $script:FlytCompletionSnapshotAt = [DateTimeOffset]::MinValue
 $script:FlytCompletionRegistered = $false
 
 function Get-FlytLaunchSpec {
-    if ($env:FLYTV1_EXE) {
-        $resolved = (Resolve-Path -LiteralPath $env:FLYTV1_EXE).Path
+    $configuredExecutable = if ($env:FLYT_EXE) { $env:FLYT_EXE } else { $env:FLYTV1_EXE }
+    if ($configuredExecutable) {
+        $resolved = (Resolve-Path -LiteralPath $configuredExecutable).Path
         if ([IO.Path]::GetExtension($resolved) -eq '.dll') {
             return [pscustomobject]@{ FileName = 'dotnet'; Prefix = @($resolved) }
         }
@@ -24,7 +25,7 @@ function Get-FlytLaunchSpec {
         return [pscustomobject]@{ FileName = $command.Source; Prefix = @() }
     }
 
-    throw 'Flyt executable not found. Set FLYTV1_EXE to flyt.exe or flyt.dll.'
+    throw 'Flyt executable not found. Set FLYT_EXE to flyt.exe or flyt.dll.'
 }
 
 function Get-FlytCompletionSnapshot {
@@ -113,7 +114,10 @@ function Get-FlytCompletionCandidates {
             $templates = @('default')
             $templateDirectories = @((Join-Path (Get-Location) '.flyt'))
             $localData = [Environment]::GetFolderPath('LocalApplicationData')
-            if ($localData) { $templateDirectories += Join-Path $localData 'FlytV1/templates' }
+            if ($localData) {
+                $templateDirectories += Join-Path $localData 'Flyt/templates'
+                $templateDirectories += Join-Path $localData 'FlytV1/templates'
+            }
             foreach ($directory in $templateDirectories) {
                 if (Test-Path -LiteralPath $directory) {
                     $templates += Get-ChildItem -LiteralPath $directory -Filter '*.json' -File |

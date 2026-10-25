@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flytv1.local/schemas/receipt.schema.json",
+  "$id": "https://flyt.local/schemas/receipt.schema.json",
   "title": "Flyt task receipt",
   "type": "object",
   "required": ["taskId", "status", "artifacts", "evidence"],
@@ -12,4 +12,3 @@
   },
   "additionalProperties": false
 }
-

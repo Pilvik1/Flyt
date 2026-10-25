@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flytv1.local/schemas/mission.schema.json",
+  "$id": "https://flyt.local/schemas/mission.schema.json",
   "title": "Flyt mission brief",
   "type": "object",
   "required": ["goal", "workspacePath", "acceptanceCriteria"],
@@ -23,4 +23,3 @@
   },
   "additionalProperties": false
 }
-

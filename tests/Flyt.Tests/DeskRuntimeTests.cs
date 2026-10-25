@@ -10,7 +10,7 @@ namespace Flyt.Tests;
 public sealed class DeskRuntimeTests : IDisposable
 {
     private readonly string _directory = Path.Combine(
-        Path.GetTempPath(), "flytv1-runtime-tests", Guid.NewGuid().ToString("N"));
+        Path.GetTempPath(), "flyt-runtime-tests", Guid.NewGuid().ToString("N"));
 
     [Fact]
     public async Task StarterTemplate_RoundTripsIntoTypedSessions()

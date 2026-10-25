@@ -14,9 +14,9 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repositoryRoot
 try {
-    dotnet restore FlytV1.slnx
-    dotnet build FlytV1.slnx --configuration Release --no-restore
-    dotnet test FlytV1.slnx --configuration Release --no-build
+    dotnet restore Flyt.slnx
+    dotnet build Flyt.slnx --configuration Release --no-restore
+    dotnet test Flyt.slnx --configuration Release --no-build
 
     $flytDll = Join-Path $repositoryRoot 'src/Flyt.Cli/bin/Release/net10.0/flyt.dll'
     $arguments = @(
