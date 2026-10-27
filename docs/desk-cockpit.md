@@ -30,6 +30,9 @@ Role colour is stable: planner cyan, builder blue, researcher purple, reviewer
 magenta, verifier green, ops yellow, and shell grey. State colour changes:
 Working blue, Needs Input yellow, Done green, Failed red, and inactive/unknown grey.
 Every state also has text and a coloured glyph; colour is never the only signal.
+Every pane keeps a persistent top header containing its configured name, role,
+state, task, and repository. The focused pane receives a filled role-colour badge;
+inactive pane headers retain the same role colour as a lighter text accent.
 
 State evidence is ranked:
 
