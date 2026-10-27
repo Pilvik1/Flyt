@@ -87,14 +87,19 @@ try {
 
     Start-Sleep -Milliseconds 750
     Invoke-LiveFlyt desk open --name $DeskName --no-attach | Write-Host
+    $borderStatus = (& psmux show-options -t $DeskName -g -v pane-border-status 2>&1 | Out-String).Trim()
     $borderLines = (& psmux show-options -t $DeskName -g -v pane-border-lines 2>&1 | Out-String).Trim()
     $borderFormat = (& psmux show-options -t $DeskName -g -v pane-border-format 2>&1 | Out-String).Trim()
     $inactiveStyle = (& psmux show-options -t $DeskName -g -v window-style 2>&1 | Out-String).Trim()
     $statusLeft = (& psmux show-options -t $DeskName -g -v status-left 2>&1 | Out-String).Trim()
     $bindings = (& psmux list-keys 2>&1 | Out-String)
-    if ($borderLines -ne 'heavy' `
+    if ($borderStatus -ne 'top' `
+        -or $borderLines -ne 'heavy' `
         -or $borderFormat -notmatch 'fg=blue' `
+        -or $borderFormat -notmatch 'bg=blue' `
         -or $borderFormat -notmatch 'fg=magenta' `
+        -or $borderFormat -notmatch 'bg=magenta' `
+        -or $borderFormat -notmatch 'pane_active' `
         -or $inactiveStyle -notmatch 'dim=12' `
         -or $statusLeft -notmatch 'FLYT' `
         -or $bindings -notmatch 'desk action.+--action send' `
@@ -102,7 +107,7 @@ try {
         -or $bindings -notmatch '(?m)^bind-key\s+-T\s+prefix\s+N\s+display-popup.+--action add-pane' `
         -or $bindings -notmatch 'M-6.+select-pane' `
         -or $bindings -notmatch 'M-0.+select-pane') {
-        throw "Integrated cockpit chrome/controls were not configured: border=$borderLines format=$borderFormat window=$inactiveStyle status=$statusLeft"
+        throw "Integrated cockpit chrome/controls were not configured: borderStatus=$borderStatus border=$borderLines format=$borderFormat window=$inactiveStyle status=$statusLeft"
     }
     psmux list-panes -t $DeskName -F '#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_dead}' |
         ForEach-Object { Write-Host "PSMUX: $_" }

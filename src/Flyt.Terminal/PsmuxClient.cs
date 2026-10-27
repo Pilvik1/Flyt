@@ -256,15 +256,11 @@ public sealed class PsmuxClient(
             throw new ArgumentOutOfRangeException(nameof(panes), "Flyt supports one to ten pane styles.");
         }
 
-        var style = _presentation.ColorEnabled ? "#[fg=white]#[bold]" : "#[bold]";
+        var style = _presentation.ColorEnabled ? "#[fg=white,bold]" : "#[bold]";
         for (var index = panes.Count - 1; index >= 0; index--)
         {
             var pane = panes[index];
-            var selectedStyle = !_presentation.ColorEnabled
-                ? "#[bold]"
-                : _presentation.HighContrast
-                    ? "#[fg=white]#[bold]"
-                    : $"#[fg={DeskPalette.NormalizeColor(pane.Session.Color)}]#[bold]";
+            var selectedStyle = PaneHeaderStyle(pane.Session.Color);
             style = $"#{{?#{{==:#{{pane_id}},{pane.PaneId}}},{selectedStyle},{style}}}";
         }
 
@@ -278,6 +274,38 @@ public sealed class PsmuxClient(
                     "-g", "pane-border-format", format,
                 ]),
             cancellationToken).ConfigureAwait(false);
+
+        // Keep this last. psmux recalculates the pane content area when the
+        // label row is enabled; reasserting it after the final format makes
+        // configured titles visible even when a restored session or user
+        // config previously disabled pane headers.
+        await RunRequiredAsync(
+            new CommandInvocation(
+                executable,
+                [
+                    "set-option", "-t", PsmuxLayoutPlanner.NormalizeSessionName(sessionName),
+                    "-g", "pane-border-status", "top",
+                ]),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private string PaneHeaderStyle(string color)
+    {
+        if (!_presentation.ColorEnabled)
+        {
+            return "#[bold]";
+        }
+
+        if (_presentation.HighContrast)
+        {
+            return "#[fg=white,bold]";
+        }
+
+        var normalized = DeskPalette.NormalizeColor(color);
+        var foreground = normalized is "black" or "brightblack" or "blue" or "magenta" or "purple" or "red"
+            ? "white"
+            : "black";
+        return $"#{{?pane_active,#[fg={foreground},bg={normalized},bold],#[fg={normalized},bold]}}";
     }
 
     public async Task UpdateDeskChromeAsync(

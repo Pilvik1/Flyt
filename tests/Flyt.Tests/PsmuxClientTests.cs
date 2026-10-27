@@ -99,11 +99,17 @@ public sealed class PsmuxClientTests
                     AgentProvider.Codex, "reviewer", Environment.CurrentDirectory, "codex", role: "reviewer")),
             ]);
 
-        var invocation = Assert.Single(executor.Invocations);
-        var format = invocation.Arguments[^1];
+        Assert.Equal(2, executor.Invocations.Count);
+        var format = executor.Invocations[0].Arguments[^1];
         Assert.Contains("#{pane_id},%7", format, StringComparison.Ordinal);
         Assert.Contains("fg=blue", format, StringComparison.Ordinal);
+        Assert.Contains("bg=blue", format, StringComparison.Ordinal);
         Assert.Contains("fg=magenta", format, StringComparison.Ordinal);
+        Assert.Contains("bg=magenta", format, StringComparison.Ordinal);
+        Assert.Contains("pane_active", format, StringComparison.Ordinal);
+        Assert.Equal(
+            ["set-option", "-t", "daily", "-g", "pane-border-status", "top"],
+            executor.Invocations[1].Arguments);
     }
 
     [Fact]
@@ -127,6 +133,9 @@ public sealed class PsmuxClientTests
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("pane-border-format")
             && !value.Arguments[^1].Contains("fg=", StringComparison.Ordinal));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("pane-border-status")
+            && value.Arguments[^1] == "top");
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("select-pane")
             && value.Arguments[^1].Contains(" | * WORKING | ", StringComparison.Ordinal));
