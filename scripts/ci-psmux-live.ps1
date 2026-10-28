@@ -218,7 +218,7 @@ try {
     }
     $activeTitle = (& psmux list-panes -t $DeskName -F '#{pane_active}|#{pane_title}' |
         Where-Object { $_ -like '1|*' } | Out-String).Trim()
-    if ($activeTitle -notmatch '^1\|reviewer · REVIEWER') {
+    if ($activeTitle -notmatch '^1\|reviewer · 🟣 REVIEWER') {
         throw "Focused pane was not restored after reopen: $activeTitle"
     }
 
@@ -239,7 +239,7 @@ try {
     }
     $recoveredActiveTitle = (& psmux list-panes -t $DeskName -F '#{pane_active}|#{pane_title}' |
         Where-Object { $_ -like '1|*' } | Out-String).Trim()
-    if ($recoveredActiveTitle -notmatch '^1\|reviewer · REVIEWER') {
+    if ($recoveredActiveTitle -notmatch '^1\|reviewer · 🟣 REVIEWER') {
         throw "Unexpected-loss recovery did not restore focus: $recoveredActiveTitle"
     }
 }
