@@ -30,9 +30,11 @@ Role colour is stable: planner cyan, builder blue, researcher purple, reviewer
 magenta, verifier green, ops yellow, and shell grey. State colour changes:
 Working blue, Needs Input yellow, Done green, Failed red, and inactive/unknown grey.
 Every state also has text and a coloured glyph; colour is never the only signal.
-Every pane keeps a persistent top header containing its configured name, role,
-state, task, and repository. The focused pane receives a filled role-colour badge;
-inactive pane headers retain the same role colour as a lighter text accent.
+Every pane keeps a persistent top header containing its configured name, a
+role-colour marker, role, state, repository, and task when space permits. The
+marker is stored in the pane title so it remains visible through psmux's
+attached-client renderer; the focused pane also receives the attention-aware
+active border.
 
 State evidence is ranked:
 
@@ -54,7 +56,7 @@ recent Desk for the current workspace, or creates a default Desk when none exist
 
 The integrated grid uses:
 
-- a stable role-coloured pane label;
+- a stable role-colour marker in every pane label;
 - explicit state glyph and text, plus a state-coloured active border;
 - a heavy white/attention border and dimmed inactive panes;
 - compact `pane · ROLE · STATE · task · repo` headers;

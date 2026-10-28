@@ -5,7 +5,10 @@ namespace Flyt.Terminal;
 public static class PsmuxLayoutPlanner
 {
     public const int MaximumSessions = 10;
-    public const int MaximumPaneTitleLength = 78;
+    // psmux 3.4's attached-client renderer suppresses (rather than truncates)
+    // border labels wider than their pane. Keep titles inside Flyt's smallest
+    // supported tiled pane, including the border-format padding.
+    public const int MaximumPaneTitleLength = 48;
 
     public static IReadOnlyList<CommandInvocation> BuildPreview(
         string executable,
@@ -100,16 +103,26 @@ public static class PsmuxLayoutPlanner
     internal static CommandInvocation TitleCommand(string executable, string paneId, string title) =>
         new(executable, ["select-pane", "-t", paneId, "-T", title]);
 
-    public static string PaneTitle(AgentSessionSpec session, DeskPaneStatus status, bool unicodeEnabled = true)
+    public static string PaneTitle(
+        AgentSessionSpec session,
+        DeskPaneStatus status,
+        bool unicodeEnabled = true,
+        bool colorEnabled = true)
     {
         ArgumentNullException.ThrowIfNull(session);
-        var repository = new DirectoryInfo(session.WorkingDirectory).Name;
+        var repository = Compact(new DirectoryInfo(session.WorkingDirectory).Name, 12);
         var separator = unicodeEnabled ? " · " : " | ";
-        var prefix = $"{session.Name}{separator}{session.Role.ToUpperInvariant()}{separator}{StateGlyph(status, unicodeEnabled)} {StateLabel(status)}{separator}";
+        var roleMarker = RoleColorGlyph(session.Color, unicodeEnabled, colorEnabled);
+        var role = string.IsNullOrEmpty(roleMarker)
+            ? session.Role.ToUpperInvariant()
+            : $"{roleMarker} {session.Role.ToUpperInvariant()}";
+        var prefix = $"{session.Name}{separator}{role}{separator}{StateGlyph(status, unicodeEnabled)} {CompactStateLabel(status)}";
         var suffix = $"{separator}{repository}";
-        var available = Math.Max(8, MaximumPaneTitleLength - prefix.Length - suffix.Length);
-        var task = Compact(session.Task, available);
-        return $"{prefix}{task}{suffix}";
+        var available = MaximumPaneTitleLength - prefix.Length - suffix.Length - separator.Length;
+        var title = available >= 4
+            ? $"{prefix}{separator}{Compact(session.Task, available)}{suffix}"
+            : $"{prefix}{suffix}";
+        return Compact(title, MaximumPaneTitleLength);
     }
 
     public static string StableNameFromTitle(string title) =>
@@ -131,6 +144,28 @@ public static class PsmuxLayoutPlanner
     private static string Compact(string value, int maximumLength) => value.Length <= maximumLength
         ? value
         : $"{value[..Math.Max(1, maximumLength - 1)].TrimEnd()}…";
+
+    private static string RoleColorGlyph(string color, bool unicodeEnabled, bool colorEnabled)
+    {
+        if (!unicodeEnabled || !colorEnabled)
+        {
+            return string.Empty;
+        }
+
+        return DeskPalette.NormalizeColor(color) switch
+        {
+            "black" or "brightblack" => "⚫",
+            "red" => "🔴",
+            "orange" => "🟠",
+            "yellow" => "🟡",
+            "green" => "🟢",
+            "cyan" => "🔷",
+            "blue" => "🔵",
+            "magenta" or "purple" => "🟣",
+            "white" => "⚪",
+            _ => "◆",
+        };
+    }
 
     private static string StateGlyph(DeskPaneStatus status, bool unicodeEnabled)
     {
@@ -161,6 +196,16 @@ public static class PsmuxLayoutPlanner
     private static string StateLabel(DeskPaneStatus status) => status == DeskPaneStatus.NeedsInput
         ? "NEEDS INPUT"
         : status.ToString().ToUpperInvariant();
+
+    private static string CompactStateLabel(DeskPaneStatus status) => status switch
+    {
+        DeskPaneStatus.NeedsInput => "INPUT",
+        DeskPaneStatus.Working => "WORK",
+        DeskPaneStatus.Running => "RUN",
+        DeskPaneStatus.Starting => "START",
+        DeskPaneStatus.Paused => "PAUSE",
+        _ => StateLabel(status),
+    };
 
     internal static CommandInvocation SendCommand(string executable, string paneId, string command) =>
         new(executable, ["send-keys", "-t", paneId, "--", command, "Enter"]);

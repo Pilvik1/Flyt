@@ -85,7 +85,7 @@ public sealed class PsmuxClientTests
     }
 
     [Fact]
-    public async Task ConfigureRoleBorderFormat_MapsPaneIndexesToStableRoleColours()
+    public async Task ConfigureRoleBorderFormat_UsesRendererSafePersistentHeaders()
     {
         var executor = new FakeCommandExecutor();
         var client = new PsmuxClient(executor);
@@ -101,12 +101,9 @@ public sealed class PsmuxClientTests
 
         Assert.Equal(2, executor.Invocations.Count);
         var format = executor.Invocations[0].Arguments[^1];
-        Assert.Contains("#{pane_id},%7", format, StringComparison.Ordinal);
-        Assert.Contains("fg=blue", format, StringComparison.Ordinal);
-        Assert.Contains("bg=blue", format, StringComparison.Ordinal);
-        Assert.Contains("fg=magenta", format, StringComparison.Ordinal);
-        Assert.Contains("bg=magenta", format, StringComparison.Ordinal);
-        Assert.Contains("pane_active", format, StringComparison.Ordinal);
+        Assert.Equal(" #{pane_title} ", format);
+        Assert.DoesNotContain("#[", format, StringComparison.Ordinal);
+        Assert.DoesNotContain("#{?", format, StringComparison.Ordinal);
         Assert.Equal(
             ["set-option", "-t", "daily", "-g", "pane-border-status", "top"],
             executor.Invocations[1].Arguments);
@@ -132,13 +129,13 @@ public sealed class PsmuxClientTests
             value.Arguments.Contains("window-style") && value.Arguments.Contains("dim=0"));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("pane-border-format")
-            && !value.Arguments[^1].Contains("fg=", StringComparison.Ordinal));
+            && value.Arguments[^1] == " #{pane_title} ");
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("pane-border-status")
             && value.Arguments[^1] == "top");
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("select-pane")
-            && value.Arguments[^1].Contains(" | * WORKING | ", StringComparison.Ordinal));
+            && value.Arguments[^1].Contains(" | * WORK | ", StringComparison.Ordinal));
     }
 
     [Fact]

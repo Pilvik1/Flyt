@@ -95,11 +95,8 @@ try {
     $bindings = (& psmux list-keys 2>&1 | Out-String)
     if ($borderStatus -ne 'top' `
         -or $borderLines -ne 'heavy' `
-        -or $borderFormat -notmatch 'fg=blue' `
-        -or $borderFormat -notmatch 'bg=blue' `
-        -or $borderFormat -notmatch 'fg=magenta' `
-        -or $borderFormat -notmatch 'bg=magenta' `
-        -or $borderFormat -notmatch 'pane_active' `
+        -or $borderFormat -ne '#{pane_title}' `
+        -or $borderFormat -match '#\[|#\{\?' `
         -or $inactiveStyle -notmatch 'dim=12' `
         -or $statusLeft -notmatch 'FLYT' `
         -or $bindings -notmatch 'desk action.+--action send' `
@@ -109,8 +106,16 @@ try {
         -or $bindings -notmatch 'M-0.+select-pane') {
         throw "Integrated cockpit chrome/controls were not configured: borderStatus=$borderStatus border=$borderLines format=$borderFormat window=$inactiveStyle status=$statusLeft"
     }
-    psmux list-panes -t $DeskName -F '#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_dead}' |
+    $livePaneTitles = @(& psmux list-panes -t $DeskName -F '#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_dead}')
+    $livePaneTitles |
         ForEach-Object { Write-Host "PSMUX: $_" }
+    $livePaneText = $livePaneTitles -join "`n"
+    if ($livePaneText -notmatch '🔷 PLANNER' `
+        -or $livePaneText -notmatch '🔵 BUILDER' `
+        -or $livePaneText -notmatch '🟣 REVIEWER' `
+        -or $livePaneText -notmatch '🟢 VERIFIER') {
+        throw "Renderer-safe pane titles did not preserve role colour markers: $($livePaneTitles -join '; ')"
+    }
     $status = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
     $desk = @($status.registered | Where-Object sessionName -eq $DeskName)
     if ($desk.Count -ne 1 -or @($desk[0].panes).Count -ne 10) {

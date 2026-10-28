@@ -256,16 +256,10 @@ public sealed class PsmuxClient(
             throw new ArgumentOutOfRangeException(nameof(panes), "Flyt supports one to ten pane styles.");
         }
 
-        var style = _presentation.ColorEnabled ? "#[fg=white,bold]" : "#[bold]";
-        for (var index = panes.Count - 1; index >= 0; index--)
-        {
-            var pane = panes[index];
-            var selectedStyle = PaneHeaderStyle(pane.Session.Color);
-            style = $"#{{?#{{==:#{{pane_id}},{pane.PaneId}}},{selectedStyle},{style}}}";
-        }
-
-        var separator = _presentation.UnicodeEnabled ? " · " : " | ";
-        var format = $" {style}#{{pane_index}}{separator}#{{pane_title}} #[default]";
+        // psmux 3.4's attached-client renderer only expands pane_index and
+        // pane_title in pane-border-format. Keep this format deliberately
+        // short and renderer-safe; role colour lives in each pane title.
+        var format = " #{pane_title} ";
         await RunRequiredAsync(
             new CommandInvocation(
                 executable,
@@ -289,24 +283,12 @@ public sealed class PsmuxClient(
             cancellationToken).ConfigureAwait(false);
     }
 
-    private string PaneHeaderStyle(string color)
-    {
-        if (!_presentation.ColorEnabled)
-        {
-            return "#[bold]";
-        }
-
-        if (_presentation.HighContrast)
-        {
-            return "#[fg=white,bold]";
-        }
-
-        var normalized = DeskPalette.NormalizeColor(color);
-        var foreground = normalized is "black" or "brightblack" or "blue" or "magenta" or "purple" or "red"
-            ? "white"
-            : "black";
-        return $"#{{?pane_active,#[fg={foreground},bg={normalized},bold],#[fg={normalized},bold]}}";
-    }
+    public string PaneTitle(AgentSessionSpec session, DeskPaneStatus status) =>
+        PsmuxLayoutPlanner.PaneTitle(
+            session,
+            status,
+            _presentation.UnicodeEnabled,
+            _presentation.ColorEnabled);
 
     public async Task UpdateDeskChromeAsync(
         string sessionName,
@@ -371,7 +353,7 @@ public sealed class PsmuxClient(
             PsmuxLayoutPlanner.TitleCommand(
                 executable,
                 paneId,
-                PsmuxLayoutPlanner.PaneTitle(session, status, _presentation.UnicodeEnabled)),
+                PaneTitle(session, status)),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -462,7 +444,7 @@ public sealed class PsmuxClient(
             PsmuxLayoutPlanner.TitleCommand(
                 executable,
                 paneId,
-                PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.Starting, _presentation.UnicodeEnabled)),
+                PaneTitle(session, DeskPaneStatus.Starting)),
             cancellationToken).ConfigureAwait(false);
         await RunRequiredAsync(
             PsmuxLayoutPlanner.SendCommand(
@@ -483,9 +465,7 @@ public sealed class PsmuxClient(
             ("program-status", "on"),
             ("remain-on-exit", "failed"),
             ("pane-border-status", "top"),
-            ("pane-border-format", _presentation.UnicodeEnabled
-                ? " #[bold]#{pane_index}#[default] · #{pane_title} "
-                : " #[bold]#{pane_index}#[default] | #{pane_title} "),
+            ("pane-border-format", " #{pane_title} "),
             ("pane-border-indicators", "both"),
             ("pane-border-lines", "heavy"),
             ("pane-border-style", colorEnabled ? "fg=brightblack" : "default"),

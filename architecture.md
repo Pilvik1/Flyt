@@ -86,9 +86,10 @@ and resource thresholds. psmux titles begin with the stable Flyt pane name so
 restart reconciliation remains deterministic while the visible suffix can show
 state, role, and task.
 
-The integrated cockpit remains psmux-native. Flyt configures role-coloured border
-labels, attention-aware active borders, adaptive layouts, keyboard actions, and
-popup commands, while a foreground `desk open` controller reconciles state and
+The integrated cockpit remains psmux-native. Flyt uses renderer-safe border
+formats with role-colour markers embedded in durable pane titles, plus
+attention-aware active borders, adaptive layouts, keyboard actions, and popup
+commands, while a foreground `desk open` controller reconciles state and
 dispatches queued work beside the attached psmux client. SQLite persists the
 preferred layout and most recently active stable pane name for stop/reopen recovery.
 
