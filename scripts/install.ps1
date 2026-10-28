@@ -97,6 +97,26 @@ function Add-FlytToUserPath {
     }
 }
 
+function Remove-FlytDirectoryBestEffort {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Description
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    try {
+        Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+    }
+    catch {
+        Write-Warning `
+            "$Description could not be removed. Flyt remains installed. Close any process using files under '$Path' and remove that directory later. $($_.Exception.Message)" `
+            -WarningAction Continue
+    }
+}
+
 if (-not $IsWindows) {
     throw 'Flyt currently supports native Windows only.'
 }
@@ -205,11 +225,13 @@ try {
     Import-Module (Join-Path $installedModuleDirectory 'Flyt.psd1') -Force
     Get-Command Start-FlytDesk -ErrorAction Stop | Out-Null
 
-    if (Test-Path -LiteralPath $backupDirectory) {
-        Remove-Item -LiteralPath $backupDirectory -Recurse -Force
-    }
-    if ($moduleBackupDirectory -and (Test-Path -LiteralPath $moduleBackupDirectory)) {
-        Remove-Item -LiteralPath $moduleBackupDirectory -Recurse -Force
+    Remove-FlytDirectoryBestEffort `
+        -Path $backupDirectory `
+        -Description 'The previous Flyt application backup'
+    if ($moduleBackupDirectory) {
+        Remove-FlytDirectoryBestEffort `
+            -Path $moduleBackupDirectory `
+            -Description 'The previous Flyt PowerShell module backup'
     }
 
     Write-Host "Flyt $($manifest.version) installed successfully."
@@ -235,10 +257,10 @@ catch {
     throw
 }
 finally {
-    if (Test-Path -LiteralPath $stagedDirectory) {
-        Remove-Item -LiteralPath $stagedDirectory -Recurse -Force
-    }
-    if (Test-Path -LiteralPath $temporaryDirectory) {
-        Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force
-    }
+    Remove-FlytDirectoryBestEffort `
+        -Path $stagedDirectory `
+        -Description 'The staged Flyt installation directory'
+    Remove-FlytDirectoryBestEffort `
+        -Path $temporaryDirectory `
+        -Description 'The temporary Flyt installation directory'
 }
