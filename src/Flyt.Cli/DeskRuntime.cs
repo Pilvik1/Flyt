@@ -89,7 +89,7 @@ internal static class DeskRuntime
                             presentation.Color,
                             presentation.Tags,
                             presentation.ProviderSessionId);
-                        var expectedTitle = PsmuxLayoutPlanner.PaneTitle(presentationSession, runtime.Status);
+                        var expectedTitle = psmux.PaneTitle(presentationSession, runtime.Status);
                         if (!string.Equals(snapshot.Title, expectedTitle, StringComparison.Ordinal))
                         {
                             await psmux.SetPanePresentationAsync(

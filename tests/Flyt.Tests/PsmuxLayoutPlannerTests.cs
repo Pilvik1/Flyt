@@ -80,10 +80,51 @@ public sealed class PsmuxLayoutPlannerTests
 
         var title = PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.NeedsInput);
 
-        Assert.StartsWith("builder · BUILDER · ! NEEDS INPUT ·", title, StringComparison.Ordinal);
+        Assert.StartsWith("builder · 🔵 BUILDER · ! INPUT ·", title, StringComparison.Ordinal);
         Assert.Contains("Flyt", title, StringComparison.Ordinal);
         Assert.True(title.Length <= PsmuxLayoutPlanner.MaximumPaneTitleLength);
         Assert.Equal("builder", PsmuxLayoutPlanner.StableNameFromTitle(title));
+    }
+
+    [Theory]
+    [InlineData("planner", "🔷")]
+    [InlineData("builder", "🔵")]
+    [InlineData("reviewer", "🟣")]
+    [InlineData("verifier", "🟢")]
+    [InlineData("ops", "🟡")]
+    [InlineData("shell", "⚫")]
+    public void PaneTitle_UsesVisibleRoleColourMarker(string role, string marker)
+    {
+        var session = AgentSessionSpec.Create(
+            AgentProvider.Claude,
+            role,
+            Path.Combine(Path.GetTempPath(), "Flyt"),
+            "claude",
+            role: role);
+
+        var title = PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.Working);
+
+        Assert.Contains($"· {marker} {role.ToUpperInvariant()} ·", title, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PaneTitle_NoColorOrAsciiOmitsRoleColourMarker()
+    {
+        var session = AgentSessionSpec.Create(
+            AgentProvider.Claude,
+            "builder",
+            Path.Combine(Path.GetTempPath(), "Flyt"),
+            "claude",
+            role: "builder");
+
+        Assert.StartsWith(
+            "builder · BUILDER ·",
+            PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.Working, colorEnabled: false),
+            StringComparison.Ordinal);
+        Assert.StartsWith(
+            "builder | BUILDER |",
+            PsmuxLayoutPlanner.PaneTitle(session, DeskPaneStatus.Working, unicodeEnabled: false),
+            StringComparison.Ordinal);
     }
 
     private static AgentSessionSpec Session(AgentProvider provider, string name) =>
