@@ -134,6 +134,50 @@ jobs:
             -ModuleRoot "$env:RUNNER_TEMP/flyt-modules/Flyt" `
             -SkipPathUpdate `
             -NonInteractive
+
+          # A running Flyt process can keep the previous executable locked after
+          # the application directory is swapped. Cleanup must warn and retain
+          # that rollback backup without undoing the verified upgrade.
+          $oldInstallMarker = "$env:RUNNER_TEMP/flyt-app/current/old-install.marker"
+          Set-Content -LiteralPath $oldInstallMarker -Value 'old install'
+          $lockHolder = "$env:RUNNER_TEMP/flyt-app/current/flyt-lock-holder.exe"
+          Copy-Item `
+            -LiteralPath "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" `
+            -Destination $lockHolder
+          $locker = Start-Process `
+            -FilePath $lockHolder `
+            -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 30' `
+            -PassThru
+          Start-Sleep -Milliseconds 500
+          if ($locker.HasExited) {
+            throw 'The installer regression lock process exited unexpectedly.'
+          }
+          try {
+            ./scripts/install.ps1 `
+              -PackagePath $package.FullName `
+              -ChecksumPath "$($package.FullName).sha256" `
+              -InstallRoot "$env:RUNNER_TEMP/flyt-app" `
+              -ModuleRoot "$env:RUNNER_TEMP/flyt-modules/Flyt" `
+              -SkipPathUpdate `
+              -NonInteractive
+
+            if (Test-Path -LiteralPath $oldInstallMarker) {
+              throw 'The installer rolled back instead of retaining the verified upgrade.'
+            }
+            $retainedBackup = Get-ChildItem `
+              "$env:RUNNER_TEMP/flyt-app" `
+              -Directory `
+              -Filter '.backup-*' | Where-Object {
+                Test-Path -LiteralPath (Join-Path $_.FullName 'old-install.marker')
+              }
+            if (-not $retainedBackup) {
+              throw 'The locked previous installation was not retained for later cleanup.'
+            }
+          }
+          finally {
+            Stop-Process -Id $locker.Id -Force -ErrorAction SilentlyContinue
+          }
+          & "$env:RUNNER_TEMP/flyt-app/current/flyt.exe" version
           @(
             "$env:RUNNER_TEMP/flyt-app/current/LICENSE"
             "$env:RUNNER_TEMP/flyt-app/current/THIRD-PARTY-NOTICES.md"
