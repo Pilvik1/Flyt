@@ -9,6 +9,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $env:FLYT_STATE_DIR = Join-Path $env:RUNNER_TEMP 'flyt-live-state'
+$ConcurrentDeskName = "$DeskName-secondary"
 
 function Invoke-LiveFlyt {
     param([Parameter(ValueFromRemainingArguments)][string[]] $Arguments)
@@ -19,6 +20,28 @@ function Invoke-LiveFlyt {
     }
 
     return $output.Trim()
+}
+
+function Wait-ForPaneOutput {
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Pane,
+        [Parameter(Mandatory)][string] $Pattern,
+        [int] $TimeoutSeconds = 8
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $output = ''
+    do {
+        $output = Invoke-LiveFlyt desk logs --name $Name --pane $Pane --lines 80
+        if ($output -match $Pattern) {
+            return $output
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Pane '$Pane' in Desk '$Name' did not produce '$Pattern' within $TimeoutSeconds seconds. Output: $output"
 }
 
 $configurationWorkspace = Join-Path $env:RUNNER_TEMP 'flyt-config-workspace'
@@ -87,11 +110,26 @@ try {
 
     Start-Sleep -Milliseconds 750
     Invoke-LiveFlyt desk open --name $DeskName --no-attach | Write-Host
+    Invoke-LiveFlyt desk start `
+        --name $ConcurrentDeskName `
+        --path $WorkspacePath `
+        --sessions 'shell:ops' | Write-Host
+    Invoke-LiveFlyt desk open --name $ConcurrentDeskName --no-attach | Write-Host
+    Invoke-LiveFlyt desk add-pane `
+        --name $ConcurrentDeskName `
+        --provider shell `
+        --pane scratch `
+        --command pwsh | Write-Host
+    Invoke-LiveFlyt desk remove-pane `
+        --name $ConcurrentDeskName `
+        --pane scratch `
+        --yes | Write-Host
     $borderStatus = (& psmux show-options -t $DeskName -g -v pane-border-status 2>&1 | Out-String).Trim()
     $borderLines = (& psmux show-options -t $DeskName -g -v pane-border-lines 2>&1 | Out-String).Trim()
     $borderFormat = (& psmux show-options -t $DeskName -g -v pane-border-format 2>&1 | Out-String).Trim()
     $inactiveStyle = (& psmux show-options -t $DeskName -g -v window-style 2>&1 | Out-String).Trim()
     $statusLeft = (& psmux show-options -t $DeskName -g -v status-left 2>&1 | Out-String).Trim()
+    $statusRight = (& psmux show-options -t $DeskName -g -v status-right 2>&1 | Out-String).Trim()
     $bindings = (& psmux list-keys 2>&1 | Out-String)
     if ($borderStatus -ne 'top' `
         -or $borderLines -ne 'heavy' `
@@ -99,12 +137,17 @@ try {
         -or $borderFormat -match '#\[|#\{\?' `
         -or $inactiveStyle -notmatch 'dim=12' `
         -or $statusLeft -notmatch 'FLYT' `
+        -or $statusRight -notmatch 'n add.+x close.+\? help' `
         -or $bindings -notmatch 'desk action.+--action send' `
         -or $bindings -notmatch '(?m)^bind-key\s+-T\s+prefix\s+n\s+display-popup.+--action add-pane' `
         -or $bindings -notmatch '(?m)^bind-key\s+-T\s+prefix\s+N\s+display-popup.+--action add-pane' `
+        -or $bindings -notmatch '(?m)^bind-key\s+-T\s+prefix\s+\?\s+display-popup.+--action help' `
+        -or $bindings -notmatch '#\{session_name\}' `
+        -or $bindings -match "--name\s+$([regex]::Escape($DeskName))" `
+        -or $bindings -match "--name\s+$([regex]::Escape($ConcurrentDeskName))" `
         -or $bindings -notmatch 'M-6.+select-pane' `
         -or $bindings -notmatch 'M-0.+select-pane') {
-        throw "Integrated cockpit chrome/controls were not configured: borderStatus=$borderStatus border=$borderLines format=$borderFormat window=$inactiveStyle status=$statusLeft"
+        throw "Integrated cockpit chrome/controls were not configured: borderStatus=$borderStatus border=$borderLines format=$borderFormat window=$inactiveStyle statusLeft=$statusLeft statusRight=$statusRight"
     }
     $livePaneTitles = @(& psmux list-panes -t $DeskName -F '#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_dead}')
     $livePaneTitles |
@@ -117,6 +160,10 @@ try {
         throw "Renderer-safe pane titles did not preserve role colour markers: $($livePaneTitles -join '; ')"
     }
     $status = Invoke-LiveFlyt desk status --json | ConvertFrom-Json
+    $runningDeskNames = @($status.registered | Where-Object status -eq 'Running' | ForEach-Object sessionName)
+    if ($DeskName -notin $runningDeskNames -or $ConcurrentDeskName -notin $runningDeskNames) {
+        throw "Concurrent Desks were not both running: $($runningDeskNames -join ', ')"
+    }
     $desk = @($status.registered | Where-Object sessionName -eq $DeskName)
     if ($desk.Count -ne 1 -or @($desk[0].panes).Count -ne 10) {
         throw 'Live psmux proof did not re-adopt exactly ten panes.'
@@ -150,22 +197,14 @@ try {
         --action send `
         --text "Write-Output 'FLYT_ACTION_PROOF'" `
         --yes | Write-Host
-    Start-Sleep -Milliseconds 500
-    $actionLogs = Invoke-LiveFlyt desk logs --name $DeskName --pane builder --lines 80
-    if ($actionLogs -notmatch 'FLYT_ACTION_PROOF') {
-        throw 'Cockpit popup action path did not deliver targeted text.'
-    }
+    Wait-ForPaneOutput -Name $DeskName -Pane builder -Pattern 'FLYT_ACTION_PROOF' | Out-Null
 
     Invoke-LiveFlyt desk send `
         --name $DeskName `
         --pane builder `
         --include-shell `
         --text "Write-Output 'FLYT_PSMUX_PROOF'" | Write-Host
-    Start-Sleep -Milliseconds 500
-    $logs = Invoke-LiveFlyt desk logs --name $DeskName --pane builder --lines 80
-    if ($logs -notmatch 'FLYT_PSMUX_PROOF') {
-        throw 'Safe targeted send did not appear in pane output.'
-    }
+    Wait-ForPaneOutput -Name $DeskName -Pane builder -Pattern 'FLYT_PSMUX_PROOF' | Out-Null
 
     Invoke-LiveFlyt desk queue add `
         --name $DeskName `
@@ -173,11 +212,7 @@ try {
         --text "Write-Output 'FLYT_QUEUE_PROOF'" `
         --expensive | Write-Host
     Invoke-LiveFlyt desk queue dispatch --name $DeskName | Write-Host
-    Start-Sleep -Milliseconds 500
-    $queueLogs = Invoke-LiveFlyt desk logs --name $DeskName --pane verifier --lines 80
-    if ($queueLogs -notmatch 'FLYT_QUEUE_PROOF') {
-        throw 'Queued work was not dispatched to the selected pane.'
-    }
+    Wait-ForPaneOutput -Name $DeskName -Pane verifier -Pattern 'FLYT_QUEUE_PROOF' | Out-Null
 
     Invoke-LiveFlyt desk handoff `
         --name $DeskName `
@@ -250,6 +285,12 @@ finally {
     catch {
         Write-Warning "Cleanup failed: $_"
     }
+    try {
+        Invoke-LiveFlyt desk stop --name $ConcurrentDeskName | Write-Host
+    }
+    catch {
+        Write-Warning "Concurrent Desk cleanup failed: $_"
+    }
 }
 
-Write-Host 'Live Windows psmux proof passed: ten panes across multiple repositories, re-adoption, send, queue, handoffs, history, stop/reopen, and unexpected-loss recovery.'
+Write-Host 'Live Windows psmux proof passed: concurrent named Desks, dynamic pane controls, ten panes across multiple repositories, re-adoption, send, queue, handoffs, history, stop/reopen, and unexpected-loss recovery.'

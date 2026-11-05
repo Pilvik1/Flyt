@@ -283,10 +283,10 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
+        var name = PsmuxLayoutPlanner.NormalizeSessionName(RequireOption(args, "--name"));
         DeskPane pane;
         if (HasFlag(args, "--next"))
         {
-            var name = PsmuxLayoutPlanner.NormalizeSessionName(RequireOption(args, "--name"));
             var desk = await store.GetDeskAsync(name, cancellationToken).ConfigureAwait(false)
                 ?? throw new KeyNotFoundException($"Desk '{name}' is not registered.");
             pane = desk.Panes
@@ -306,7 +306,7 @@ internal static partial class Program
         {
             pane = await RequireRegisteredPaneAsync(store, args, cancellationToken).ConfigureAwait(false);
         }
-        await psmux.FocusAsync(pane.PaneId, cancellationToken).ConfigureAwait(false);
+        await psmux.FocusAsync(name, pane.PaneId, cancellationToken).ConfigureAwait(false);
         AnsiConsole.MarkupLine($"[green]Focused pane:[/] {Markup.Escape(pane.Name)}");
         return 0;
     }
@@ -318,9 +318,10 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
+        var name = PsmuxLayoutPlanner.NormalizeSessionName(RequireOption(args, "--name"));
         var pane = await RequireRegisteredPaneAsync(store, args, cancellationToken).ConfigureAwait(false);
         var session = SessionFromPane(pane, providers);
-        await psmux.RestartPaneAsync(pane.PaneId, session, cancellationToken).ConfigureAwait(false);
+        await psmux.RestartPaneAsync(name, pane.PaneId, session, cancellationToken).ConfigureAwait(false);
         AnsiConsole.MarkupLine($"[green]Restarted pane:[/] {Markup.Escape(pane.Name)}");
         return 0;
     }
@@ -331,6 +332,7 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
+        var name = PsmuxLayoutPlanner.NormalizeSessionName(RequireOption(args, "--name"));
         var pane = await RequireRegisteredPaneAsync(store, args, cancellationToken).ConfigureAwait(false);
         var linesValue = GetOption(args, "--lines") ?? "200";
         if (!int.TryParse(linesValue, NumberStyles.None, CultureInfo.InvariantCulture, out var lines))
@@ -338,7 +340,8 @@ internal static partial class Program
             throw new ArgumentException($"'{linesValue}' is not a valid line count.");
         }
 
-        var output = await psmux.CapturePaneAsync(pane.PaneId, lines, cancellationToken).ConfigureAwait(false);
+        var output = await psmux.CapturePaneAsync(name, pane.PaneId, lines, cancellationToken)
+            .ConfigureAwait(false);
         AnsiConsole.WriteLine(output);
         return 0;
     }

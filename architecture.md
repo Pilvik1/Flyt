@@ -66,7 +66,8 @@ Every persisted state change appends a corresponding event in the same SQLite tr
 ## Persistence
 
 SQLite is the sole authority. Schema changes use ordered `PRAGMA user_version`
-migrations. The current schema stores missions, content-bound plan approvals,
+migrations. The current schema stores missions, human-readable run configurations,
+content-bound plan approvals,
 workspaces, provider attempts, provider session metadata, review and verification
 receipts, pilot measurements, registered Desks and panes, durable Desk failure receipts,
 and append-only Mission events. Provider JSONL is parsed in flight; it is not the system
@@ -92,6 +93,11 @@ attention-aware active borders, adaptive layouts, keyboard actions, and popup
 commands, while a foreground `desk open` controller reconciles state and
 dispatches queued work beside the attached psmux client. SQLite persists the
 preferred layout and most recently active stable pane name for stop/reopen recovery.
+Because psmux key tables are shared across sessions, Flyt bindings resolve the active
+`#{session_name}` at invocation time; they never embed the last configured Desk name.
+Pane IDs are session-local, so every pane command uses a qualified
+`<desk>:.<pane-id>` target. This prevents a focus, send, restart, capture, style, or
+close operation in one Desk from reaching a same-numbered pane in another Desk.
 
 Targeted sending uses psmux's base64 `send-paste` boundary, followed by a separate
 submit key. This avoids command parsing and multiline corruption. Structured

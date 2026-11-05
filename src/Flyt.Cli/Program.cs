@@ -218,10 +218,11 @@ internal static partial class Program
     private static string FirstNonEmpty(params string[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "No details";
 
-    private static Guid ParseMissionId(string value) =>
-        Guid.TryParse(value, out var id)
-            ? id
-            : throw new ArgumentException($"'{value}' is not a valid mission id.");
+    private static Task<Guid> ResolveMissionIdAsync(
+        FlytStateStore store,
+        string[] args,
+        CancellationToken cancellationToken) =>
+        store.ResolveMissionIdAsync(RequireOption(args, "--id"), cancellationToken);
 
     private static string RequireOption(string[] args, string option) =>
         GetOption(args, option)
@@ -324,6 +325,7 @@ internal static partial class Program
                   [aqua]flyt desk open[/]                    Enter or restore the cockpit
                   [aqua]flyt desk status[/]                  See agents needing attention
                   [aqua]flyt desk watch --notify[/]          Monitor without attaching
+                  [aqua]flyt mission configure[/]            Set up a bounded workflow
 
                 [bold]MORE COMMANDS[/]
                   [aqua]flyt help desk[/]                    Desk operations and recovery
@@ -377,24 +379,27 @@ internal static partial class Program
     private static void PrintMissionHelp()
     {
         AnsiConsole.MarkupLine(
+            "[aqua]flyt mission configure[/] [[--path PATH]] [[--name NAME]] [[--goal TEXT]] "
+            + "[[--approve]] [[--run]]");
+        AnsiConsole.MarkupLine(
             "[aqua]flyt mission create[/] --goal TEXT [[--path PATH]] [[--profile manual|bounded|auto]]");
         AnsiConsole.MarkupLine(
-            "[aqua]flyt mission plan[/] --id ID --acceptance \"A|B\" --steps \"build|review|verify\" --verify COMMAND");
+            "[aqua]flyt mission plan[/] --id ID|NAME --acceptance \"A|B\" --steps \"build|review|verify\" --verify COMMAND");
         AnsiConsole.MarkupLine("[aqua]flyt mission list[/]");
-        AnsiConsole.MarkupLine("[aqua]flyt mission show[/] --id ID");
-        AnsiConsole.MarkupLine("[aqua]flyt mission approve[/] --id ID");
+        AnsiConsole.MarkupLine("[aqua]flyt mission show[/] --id ID|NAME");
+        AnsiConsole.MarkupLine("[aqua]flyt mission approve[/] --id ID|NAME");
         AnsiConsole.MarkupLine(
-            "[aqua]flyt mission run[/] --id ID [[--provider claude|codex]] "
+            "[aqua]flyt mission run[/] --id ID|NAME [[--provider claude|codex]] "
             + "[[--reviewer auto|claude|codex]] [[--timeout-minutes 90]]");
-        AnsiConsole.MarkupLine("[aqua]flyt mission recover[/] --id ID");
+        AnsiConsole.MarkupLine("[aqua]flyt mission recover[/] --id ID|NAME");
         AnsiConsole.MarkupLine(
-            "[aqua]flyt mission retry[/] --id ID [[--provider claude|codex]] "
+            "[aqua]flyt mission retry[/] --id ID|NAME [[--provider claude|codex]] "
             + "[[--reviewer auto|claude|codex]] [[--timeout-minutes 90]]");
         AnsiConsole.MarkupLine(
-            "[aqua]flyt mission integrate[/] --id ID --commit-message TEXT "
+            "[aqua]flyt mission integrate[/] --id ID|NAME --commit-message TEXT "
             + "[[--push]] [[--draft-pr]] [[--base main]]");
         AnsiConsole.MarkupLine("[aqua]flyt mission pilot record|report[/] [[options]]");
-        AnsiConsole.MarkupLine("[aqua]flyt mission pause|resume|cancel[/] --id ID");
+        AnsiConsole.MarkupLine("[aqua]flyt mission pause|resume|cancel[/] --id ID|NAME");
     }
 }
 

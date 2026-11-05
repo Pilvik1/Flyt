@@ -174,6 +174,7 @@ internal static partial class Program
         foreach (var target in targets)
         {
             await psmux.SendTextAsync(
+                desk.SessionName,
                 target.PaneId,
                 text,
                 submit: !HasFlag(args, "--no-submit"),
@@ -235,7 +236,7 @@ internal static partial class Program
                 .ConfigureAwait(false);
             if (desk.FocusedPaneName is not null && byName.TryGetValue(desk.FocusedPaneName, out var focused))
             {
-                await psmux.FocusAsync(focused.PaneId, cancellationToken).ConfigureAwait(false);
+                await psmux.FocusAsync(desk.SessionName, focused.PaneId, cancellationToken).ConfigureAwait(false);
             }
             await store.SaveDeskAsync(desk with
             {
@@ -262,7 +263,11 @@ internal static partial class Program
                 }
                 else
                 {
-                    await psmux.RestartPaneAsync(pane.PaneId, session, cancellationToken).ConfigureAwait(false);
+                    await psmux.RestartPaneAsync(
+                        desk.SessionName,
+                        pane.PaneId,
+                        session,
+                        cancellationToken).ConfigureAwait(false);
                 }
             }
 
@@ -589,7 +594,7 @@ internal static partial class Program
         {
             var message = $"Structured handoff from {from}. Goal: {goal}. Requested action: {requestedAction}. "
                 + $"Read {jsonPath}" + (diffPath is null ? "." : $" and patch {diffPath}.");
-            await psmux.SendTextAsync(target.PaneId, message, submit: true, cancellationToken)
+            await psmux.SendTextAsync(deskName, target.PaneId, message, submit: true, cancellationToken)
                 .ConfigureAwait(false);
         }
 

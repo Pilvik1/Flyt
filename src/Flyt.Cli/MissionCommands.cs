@@ -21,6 +21,7 @@ internal static partial class Program
 
         return args[0].ToLowerInvariant() switch
         {
+            "configure" => await ConfigureMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "create" => await CreateMissionAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "plan" => await SaveMissionPlanAsync(store, args[1..], cancellationToken).ConfigureAwait(false),
             "list" => await ListMissionsAsync(store, cancellationToken).ConfigureAwait(false),
@@ -87,7 +88,7 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var acceptanceCriteria = SplitListOption(RequireOption(args, "--acceptance"));
         var steps = SplitListOption(RequireOption(args, "--steps"));
         var verificationCommand = RequireOption(args, "--verify");
@@ -106,6 +107,7 @@ internal static partial class Program
         var missions = await store.ListMissionsAsync(cancellationToken).ConfigureAwait(false);
         var table = new Table()
             .Border(TableBorder.Rounded)
+            .AddColumn("Name")
             .AddColumn("Id")
             .AddColumn("State")
             .AddColumn("Goal")
@@ -113,7 +115,10 @@ internal static partial class Program
 
         foreach (var mission in missions)
         {
+            var configuration = await store.GetMissionConfigurationAsync(mission.Id, cancellationToken)
+                .ConfigureAwait(false);
             table.AddRow(
+                Markup.Escape(configuration?.Name ?? "-"),
                 mission.Id.ToString("D")[..8],
                 Markup.Escape(mission.State.ToString()),
                 Markup.Escape(mission.Goal),
@@ -130,10 +135,15 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var mission = await store.GetMissionAsync(id, cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Mission {id:D} was not found.");
         PrintMission(mission);
+        var configuration = await store.GetMissionConfigurationAsync(id, cancellationToken).ConfigureAwait(false);
+        if (configuration is not null)
+        {
+            PrintMissionConfiguration(configuration);
+        }
 
         var plan = await store.GetMissionPlanAsync(id, cancellationToken).ConfigureAwait(false);
         if (plan is not null)
@@ -220,7 +230,7 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var mission = await store.ApproveMissionPlanAsync(id, cancellationToken).ConfigureAwait(false);
         PrintMission(mission);
         return 0;
@@ -231,8 +241,11 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
-        var provider = (GetOption(args, "--provider") ?? "claude").ToLowerInvariant() switch
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
+        var configuration = await store.GetMissionConfigurationAsync(id, cancellationToken).ConfigureAwait(false);
+        var provider = (GetOption(args, "--provider")
+                        ?? configuration?.BuilderProvider.ToString()
+                        ?? "claude").ToLowerInvariant() switch
         {
             "claude" => AgentProvider.Claude,
             "codex" => AgentProvider.Codex,
@@ -240,7 +253,9 @@ internal static partial class Program
                 $"Unsupported Mission provider '{value}'. Expected claude or codex."),
         };
         var timeoutMinutes = int.Parse(
-            GetOption(args, "--timeout-minutes") ?? "90",
+            GetOption(args, "--timeout-minutes")
+            ?? configuration?.TimeoutMinutes.ToString(CultureInfo.InvariantCulture)
+            ?? "90",
             CultureInfo.InvariantCulture);
         if (timeoutMinutes is < 1 or > 720)
         {
@@ -249,7 +264,9 @@ internal static partial class Program
                 "Mission timeout must be between 1 and 720 minutes.");
         }
 
-        AgentProvider? reviewer = (GetOption(args, "--reviewer") ?? "auto").ToLowerInvariant() switch
+        AgentProvider? reviewer = (GetOption(args, "--reviewer")
+                                   ?? configuration?.ReviewerProvider?.ToString()
+                                   ?? "auto").ToLowerInvariant() switch
         {
             "auto" => null,
             "claude" => AgentProvider.Claude,
@@ -304,7 +321,7 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var coordinator = new MissionExecutionCoordinator(
             store,
             new GitWorktreeManager(CommandExecutor, Path.Combine(StatePaths.StateDirectory, "missions")),
@@ -322,7 +339,7 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var mission = await store.GetMissionAsync(id, cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Mission {id:D} was not found.");
         if (mission.State != MissionState.Blocked)
@@ -352,7 +369,7 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var coordinator = new MissionIntegrationCoordinator(
             store,
             new GitWorktreeManager(CommandExecutor, Path.Combine(StatePaths.StateDirectory, "missions")),
@@ -389,7 +406,7 @@ internal static partial class Program
         string detail,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var mission = await store.TransitionMissionAsync(id, state, detail, cancellationToken)
             .ConfigureAwait(false);
         PrintMission(mission);
@@ -401,7 +418,7 @@ internal static partial class Program
         string[] args,
         CancellationToken cancellationToken)
     {
-        var id = ParseMissionId(RequireOption(args, "--id"));
+        var id = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
         var current = await store.GetMissionAsync(id, cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Mission {id:D} was not found.");
         if (current.State != MissionState.Paused || current.ResumeState is null)

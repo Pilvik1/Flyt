@@ -64,7 +64,10 @@ function Get-FlytCompletionCandidates {
         'recover', 'reopen', 'failures', 'history', 'handoff', 'attach',
         'focus', 'restart-pane', 'logs', 'stop', 'notify', 'template'
     )
-    $missionCommands = @('create', 'plan', 'list', 'show', 'approve', 'pause', 'resume', 'cancel')
+    $missionCommands = @(
+        'configure', 'create', 'plan', 'list', 'show', 'approve', 'run', 'retry',
+        'recover', 'integrate', 'pilot', 'pause', 'resume', 'cancel'
+    )
     $helpTopics = @('quickstart', 'desk', 'mission', 'guide')
     $arguments = @($Tokens | Select-Object -Skip 1)
     $prior = @($arguments)

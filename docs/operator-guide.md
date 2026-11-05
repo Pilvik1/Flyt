@@ -120,6 +120,26 @@ Or select it explicitly:
 flyt desk open --name full-review
 ```
 
+### Run concurrent named Desks
+
+Use a distinct name and terminal tab or window for each cockpit:
+
+```powershell
+# Thesis terminal
+flyt desk configure --path C:/src/thesis --name thesis --open
+
+# Work terminal
+flyt desk configure --path C:/src/volve --name volve-work --open
+
+flyt desk status
+```
+
+Both psmux sessions continue running independently. Flyt resolves cockpit bindings
+against the active session and qualifies pane IDs with their owning Desk, so opening
+`volve-work` cannot retarget controls or pane actions in `thesis`. Resource ceilings
+remain per Desk; use `flyt desk status` to review aggregate activity before starting
+expensive work in both.
+
 ### See what needs attention
 
 ```powershell
@@ -182,7 +202,7 @@ sends the artifact path to the destination pane.
 | `Ctrl+b`, then `Q` | Queue work for the active pane |
 | `Ctrl+b`, then `L` | Open recent logs |
 | `Ctrl+b`, then `O` | Open the action menu |
-| `Ctrl+b`, then `?` | Show the psmux shortcut overlay |
+| `Ctrl+b`, then `?` | Show the Flyt Desk shortcut sheet |
 | `Ctrl+b`, then `d` | Detach without stopping the Desk |
 
 If a terminal consumes an `Alt` shortcut, use the action menu or `flyt desk focus`.
@@ -289,6 +309,20 @@ human confirmation that the toast was visible. Flyt also emits an OSC/BEL termin
 fallback.
 
 ## Mission workflow
+
+The normal entry point is the guided configurator:
+
+```powershell
+flyt mission configure --path .
+```
+
+It asks for a Mission name, goal, acceptance criteria, plan steps, one deterministic
+verification command, builder, reviewer, autonomy profile, and timeout. Flyt previews
+the complete setup before saving, then asks separately whether to approve the exact
+plan and whether to run it. A saved name such as `csv-import` can replace the GUID in
+later `--id` arguments.
+
+For scripts, the underlying commands remain available:
 
 ```powershell
 $mission = flyt mission create --goal "Add CSV import" --path . --profile bounded
@@ -399,6 +433,7 @@ arithmetic.
 | Leave but keep it running | `Ctrl+b`, then `d` |
 | Stop it | `flyt desk stop` |
 | Prove the real host | `flyt doctor --interactive` |
+| Configure a bounded Mission | `flyt mission configure` |
 
 Run `flyt help desk` for the full Desk command surface and `flyt help mission` for
 Mission commands.

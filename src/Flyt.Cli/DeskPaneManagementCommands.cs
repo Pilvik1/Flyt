@@ -116,7 +116,7 @@ internal static partial class Program
         {
             try
             {
-                await psmux.RemovePaneAsync(handle.PaneId, CancellationToken.None).ConfigureAwait(false);
+                await psmux.RemovePaneAsync(deskName, handle.PaneId, CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception cleanupException)
             {
@@ -139,7 +139,7 @@ internal static partial class Program
             cancellationToken).ConfigureAwait(false);
         if (!HasFlag(args, "--no-focus"))
         {
-            await psmux.FocusAsync(handle.PaneId, cancellationToken).ConfigureAwait(false);
+            await psmux.FocusAsync(deskName, handle.PaneId, cancellationToken).ConfigureAwait(false);
         }
 
         AnsiConsole.MarkupLine(
@@ -192,7 +192,7 @@ internal static partial class Program
             return 2;
         }
 
-        await psmux.RemovePaneAsync(pane.PaneId, cancellationToken).ConfigureAwait(false);
+        await psmux.RemovePaneAsync(deskName, pane.PaneId, cancellationToken).ConfigureAwait(false);
         var updated = await store.RemoveDeskPaneAsync(
             deskName,
             pane.Name,

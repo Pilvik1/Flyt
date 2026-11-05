@@ -42,6 +42,49 @@ public sealed class FlytStateStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task MissionConfiguration_PersistsAndResolvesHumanReadableName()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "mission-configuration.db"));
+        await store.InitializeAsync();
+        var mission = Mission.Create("Review the thesis model", _directory);
+        await store.CreateMissionAsync(mission);
+        var configuration = MissionConfiguration.Create(
+            mission.Id,
+            "thesis-model-review",
+            AgentProvider.Codex,
+            AgentProvider.Claude,
+            120);
+
+        await store.SaveMissionConfigurationAsync(configuration);
+
+        var loaded = await store.GetMissionConfigurationAsync(mission.Id);
+        var resolved = await store.ResolveMissionIdAsync("THESIS-MODEL-REVIEW");
+        Assert.NotNull(loaded);
+        Assert.Equal(configuration.Name, loaded.Name);
+        Assert.Equal(configuration.BuilderProvider, loaded.BuilderProvider);
+        Assert.Equal(configuration.ReviewerProvider, loaded.ReviewerProvider);
+        Assert.Equal(configuration.TimeoutMinutes, loaded.TimeoutMinutes);
+        Assert.Equal(mission.Id, resolved);
+    }
+
+    [Fact]
+    public async Task MissionConfiguration_RejectsDuplicateNames()
+    {
+        var store = new FlytStateStore(Path.Combine(_directory, "mission-name-conflict.db"));
+        await store.InitializeAsync();
+        var first = Mission.Create("First", _directory);
+        var second = Mission.Create("Second", _directory);
+        await store.CreateMissionAsync(first);
+        await store.CreateMissionAsync(second);
+        await store.SaveMissionConfigurationAsync(MissionConfiguration.Create(first.Id, "shared-name"));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.SaveMissionConfigurationAsync(MissionConfiguration.Create(second.Id, "SHARED-NAME")));
+
+        Assert.Contains("already in use", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Transition_RejectsInvalidMoveWithoutAppendingEvent()
     {
         var store = new FlytStateStore(Path.Combine(_directory, "state.db"));

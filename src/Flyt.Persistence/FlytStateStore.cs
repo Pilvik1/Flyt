@@ -371,6 +371,26 @@ public sealed class FlytStateStore
                 """,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (version < 11)
+        {
+            await ApplyMigrationAsync(
+                connection,
+                11,
+                """
+                CREATE TABLE mission_configurations (
+                    mission_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    builder_provider TEXT NOT NULL,
+                    reviewer_provider TEXT NULL,
+                    timeout_minutes INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (mission_id) REFERENCES missions(id)
+                );
+                """,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateMissionAsync(
@@ -408,6 +428,123 @@ public sealed class FlytStateStore
             cancellationToken).ConfigureAwait(false);
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<MissionConfiguration> SaveMissionConfigurationAsync(
+        MissionConfiguration configuration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var sqliteTransaction = (SqliteTransaction)transaction;
+        _ = await GetMissionAsync(
+            connection,
+            sqliteTransaction,
+            configuration.MissionId,
+            cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Mission {configuration.MissionId:D} was not found.");
+
+        await using (var conflict = connection.CreateCommand())
+        {
+            conflict.Transaction = sqliteTransaction;
+            conflict.CommandText = """
+                SELECT mission_id
+                FROM mission_configurations
+                WHERE name = $name COLLATE NOCASE AND mission_id <> $missionId
+                LIMIT 1;
+                """;
+            conflict.Parameters.AddWithValue("$name", configuration.Name);
+            conflict.Parameters.AddWithValue("$missionId", configuration.MissionId.ToString("D"));
+            if (await conflict.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Mission name '{configuration.Name}' is already in use. Choose another name.");
+            }
+        }
+
+        var existing = await GetMissionConfigurationAsync(
+            connection,
+            sqliteTransaction,
+            configuration.MissionId,
+            cancellationToken).ConfigureAwait(false);
+        var timestamp = DateTimeOffset.UtcNow;
+        var saved = configuration with
+        {
+            CreatedAt = existing?.CreatedAt ?? timestamp,
+            UpdatedAt = timestamp,
+        };
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = sqliteTransaction;
+            command.CommandText = """
+                INSERT INTO mission_configurations (
+                    mission_id, name, builder_provider, reviewer_provider,
+                    timeout_minutes, created_at, updated_at
+                ) VALUES (
+                    $missionId, $name, $builderProvider, $reviewerProvider,
+                    $timeoutMinutes, $createdAt, $updatedAt
+                )
+                ON CONFLICT(mission_id) DO UPDATE SET
+                    name = excluded.name,
+                    builder_provider = excluded.builder_provider,
+                    reviewer_provider = excluded.reviewer_provider,
+                    timeout_minutes = excluded.timeout_minutes,
+                    updated_at = excluded.updated_at;
+                """;
+            command.Parameters.AddWithValue("$missionId", saved.MissionId.ToString("D"));
+            command.Parameters.AddWithValue("$name", saved.Name);
+            command.Parameters.AddWithValue("$builderProvider", saved.BuilderProvider.ToString());
+            command.Parameters.AddWithValue(
+                "$reviewerProvider",
+                saved.ReviewerProvider?.ToString() ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("$timeoutMinutes", saved.TimeoutMinutes);
+            command.Parameters.AddWithValue("$createdAt", FormatDate(saved.CreatedAt));
+            command.Parameters.AddWithValue("$updatedAt", FormatDate(saved.UpdatedAt));
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return saved;
+    }
+
+    public async Task<MissionConfiguration?> GetMissionConfigurationAsync(
+        Guid missionId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await GetMissionConfigurationAsync(
+            connection,
+            transaction: null,
+            missionId,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<Guid> ResolveMissionIdAsync(
+        string reference,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
+        if (Guid.TryParse(reference, out var missionId))
+        {
+            return missionId;
+        }
+
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT mission_id
+            FROM mission_configurations
+            WHERE name = $name COLLATE NOCASE
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$name", reference.Trim());
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return value is string resolved
+            ? Guid.Parse(resolved)
+            : throw new KeyNotFoundException($"Mission '{reference.Trim()}' was not found.");
     }
 
     public async Task<Mission?> GetMissionAsync(
@@ -2049,6 +2186,27 @@ public sealed class FlytStateStore
         return connection;
     }
 
+    private static async Task<MissionConfiguration?> GetMissionConfigurationAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        Guid missionId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT mission_id, name, builder_provider, reviewer_provider,
+                   timeout_minutes, created_at, updated_at
+            FROM mission_configurations
+            WHERE mission_id = $missionId;
+            """;
+        command.Parameters.AddWithValue("$missionId", missionId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? ReadMissionConfiguration(reader)
+            : null;
+    }
+
     private static async Task<Mission?> GetMissionAsync(
         SqliteConnection connection,
         SqliteTransaction? transaction,
@@ -2527,6 +2685,15 @@ public sealed class FlytStateStore
         reader.GetInt32(6),
         ParseDate(reader.GetString(7)),
         ParseDate(reader.GetString(8)));
+
+    private static MissionConfiguration ReadMissionConfiguration(SqliteDataReader reader) => new(
+        Guid.Parse(reader.GetString(0)),
+        reader.GetString(1),
+        Enum.Parse<AgentProvider>(reader.GetString(2)),
+        reader.IsDBNull(3) ? null : Enum.Parse<AgentProvider>(reader.GetString(3)),
+        reader.GetInt32(4),
+        ParseDate(reader.GetString(5)),
+        ParseDate(reader.GetString(6)));
 
     private static async Task<int> GetSchemaVersionAsync(
         SqliteConnection connection,
