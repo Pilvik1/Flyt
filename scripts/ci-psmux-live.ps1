@@ -22,6 +22,28 @@ function Invoke-LiveFlyt {
     return $output.Trim()
 }
 
+function Wait-ForPaneOutput {
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Pane,
+        [Parameter(Mandatory)][string] $Pattern,
+        [int] $TimeoutSeconds = 8
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $output = ''
+    do {
+        $output = Invoke-LiveFlyt desk logs --name $Name --pane $Pane --lines 80
+        if ($output -match $Pattern) {
+            return $output
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Pane '$Pane' in Desk '$Name' did not produce '$Pattern' within $TimeoutSeconds seconds. Output: $output"
+}
+
 $configurationWorkspace = Join-Path $env:RUNNER_TEMP 'flyt-config-workspace'
 $configurationRepos = @(
     (Join-Path $configurationWorkspace 'backend'),
@@ -175,22 +197,14 @@ try {
         --action send `
         --text "Write-Output 'FLYT_ACTION_PROOF'" `
         --yes | Write-Host
-    Start-Sleep -Milliseconds 500
-    $actionLogs = Invoke-LiveFlyt desk logs --name $DeskName --pane builder --lines 80
-    if ($actionLogs -notmatch 'FLYT_ACTION_PROOF') {
-        throw 'Cockpit popup action path did not deliver targeted text.'
-    }
+    Wait-ForPaneOutput -Name $DeskName -Pane builder -Pattern 'FLYT_ACTION_PROOF' | Out-Null
 
     Invoke-LiveFlyt desk send `
         --name $DeskName `
         --pane builder `
         --include-shell `
         --text "Write-Output 'FLYT_PSMUX_PROOF'" | Write-Host
-    Start-Sleep -Milliseconds 500
-    $logs = Invoke-LiveFlyt desk logs --name $DeskName --pane builder --lines 80
-    if ($logs -notmatch 'FLYT_PSMUX_PROOF') {
-        throw 'Safe targeted send did not appear in pane output.'
-    }
+    Wait-ForPaneOutput -Name $DeskName -Pane builder -Pattern 'FLYT_PSMUX_PROOF' | Out-Null
 
     Invoke-LiveFlyt desk queue add `
         --name $DeskName `
@@ -198,11 +212,7 @@ try {
         --text "Write-Output 'FLYT_QUEUE_PROOF'" `
         --expensive | Write-Host
     Invoke-LiveFlyt desk queue dispatch --name $DeskName | Write-Host
-    Start-Sleep -Milliseconds 500
-    $queueLogs = Invoke-LiveFlyt desk logs --name $DeskName --pane verifier --lines 80
-    if ($queueLogs -notmatch 'FLYT_QUEUE_PROOF') {
-        throw 'Queued work was not dispatched to the selected pane.'
-    }
+    Wait-ForPaneOutput -Name $DeskName -Pane verifier -Pattern 'FLYT_QUEUE_PROOF' | Out-Null
 
     Invoke-LiveFlyt desk handoff `
         --name $DeskName `
