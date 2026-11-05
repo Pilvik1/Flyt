@@ -121,7 +121,7 @@ flyt desk configure --path . --name product-review --panes 4 `
 | `Ctrl+b`, `Q` | Inspect or dispatch the queue |
 | `Ctrl+b`, `L` | View recent output |
 | `Ctrl+b`, `O` | Open the action menu |
-| `Ctrl+b`, `?` | Show the shortcut sheet |
+| `Ctrl+b`, `?` | Show the Flyt shortcut sheet |
 
 Useful commands:
 
@@ -159,6 +159,17 @@ with deeper cockpit behavior in [Desk cockpit](docs/desk-cockpit.md).
 Mission mode now runs one bounded path end to end:
 
 `approved plan → isolated builder worktree → independent review → deterministic verification → operator-approved integration`
+
+Configure that workflow interactively instead of assembling it across several commands:
+
+```powershell
+flyt mission configure --path .
+```
+
+The guided flow collects a stable Mission name, goal, acceptance criteria, plan steps,
+verification command, builder, reviewer, autonomy profile, and timeout. It previews the
+complete configuration before saving, keeps plan approval explicit, and can start the
+Mission immediately after approval. The saved name can be used anywhere `--id` is accepted.
 
 Attempts, timeouts, review verdicts, changed paths, diff fingerprints, and verification
 output are persisted locally. Flyt blocks stale approvals, empty diffs, changed evidence,

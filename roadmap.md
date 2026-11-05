@@ -34,6 +34,7 @@
 - [x] Durable failure receipts and structured Desk handoff bundles.
 - [x] Resource-gated queue, searchable history, Desk reopen, and Windows toast path.
 - [x] Real ten-pane psmux shell lifecycle in Windows CI.
+- [x] Concurrent named Desks with active-session controls and dynamic pane management.
 - [ ] Prove restart re-adoption on the target Windows host.
 
 ## Phase 3 — Mission foundation
@@ -51,6 +52,7 @@ Execution order, constraints, and proof gates are defined in
 - [x] Hash-bound approval for repository setup and execution.
 - [x] Pause/resume/cancel with exact prior-state recovery.
 - [x] Conservative recovery of interrupted Mission execution.
+- [x] Guided Mission configuration with named references and explicit plan approval.
 
 ## Phase 4 — quality loop
 

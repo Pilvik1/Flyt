@@ -61,6 +61,7 @@ The integrated grid uses:
 - a heavy white/attention border and dimmed inactive panes;
 - compact `pane · ROLE · STATE · task · repo` headers;
 - an aggregate `repo/branch · agents · working · waiting · queue · RAM` status line;
+- persistent `n add · x close · ? help` control hints; and
 - adaptive layouts for one through ten panes.
 
 Focus and layout metadata survive reconciliation and stop/reopen cycles. `--no-attach`
@@ -82,7 +83,7 @@ applies and verifies the cockpit configuration without entering the full-screen 
 | `Ctrl+b`, `Q` | Queue work for the active pane |
 | `Ctrl+b`, `L` | Show recent logs in a popup |
 | `Ctrl+b`, `O` | Open the Desk action menu |
-| `Ctrl+b`, `?` | Show the psmux shortcut overlay |
+| `Ctrl+b`, `?` | Show the Flyt Desk shortcut sheet |
 
 The action menu keeps pane creation and removal, queue state, failure receipts,
 history, logs, handoffs, and pane jumping in context instead of forcing the operator
@@ -98,6 +99,10 @@ flyt desk remove-pane --name full-review --pane reviewer-2
 ```
 
 The last pane cannot be removed; use `flyt desk stop` to close the whole Desk.
+
+Bindings resolve `#{session_name}` when the key is pressed instead of embedding the
+last configured Desk. This keeps add, close, focus, popups, and direct pane jumps scoped
+to the active Desk when several named Desks share one psmux server.
 
 `flyt desk watch --notify` refreshes the cockpit and requests both a native Windows
 toast and an OSC 9/BEL terminal fallback when a pane newly needs input, completes,

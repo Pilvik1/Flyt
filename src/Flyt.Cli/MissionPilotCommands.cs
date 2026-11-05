@@ -72,7 +72,7 @@ internal static partial class Program
         }
         else
         {
-            var missionId = ParseMissionId(RequireOption(args, "--id"));
+            var missionId = await ResolveMissionIdAsync(store, args, cancellationToken).ConfigureAwait(false);
             var mission = await store.GetMissionAsync(missionId, cancellationToken).ConfigureAwait(false)
                 ?? throw new KeyNotFoundException($"Mission {missionId:D} was not found.");
             var attempts = await store.GetMissionAttemptsAsync(missionId, cancellationToken).ConfigureAwait(false);

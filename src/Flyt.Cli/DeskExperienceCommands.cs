@@ -279,7 +279,8 @@ internal static partial class Program
                             "Create handoff",
                             "Queue status",
                             "Failure receipts",
-                            "Session history"));
+                            "Session history",
+                            "Keyboard help"));
                 var nextAction = selected switch
                 {
                     "Overview" => "overview",
@@ -294,6 +295,7 @@ internal static partial class Program
                     "Queue status" => "queue-view",
                     "Failure receipts" => "failures",
                     "Session history" => "history",
+                    "Keyboard help" => "help",
                     _ => throw new InvalidOperationException($"Unknown action menu choice '{selected}'."),
                 };
                 var nextArguments = new List<string>
@@ -327,6 +329,10 @@ internal static partial class Program
                     psmux, store, snapshot, name, cancellationToken).ConfigureAwait(false);
                 AnsiConsole.Write(BuildDeskDashboard(snapshot, ["--name", name], dispatch));
                 PrintDeskWarnings(snapshot);
+                return 0;
+
+            case "help":
+                PrintDeskShortcutHelp();
                 return 0;
 
             case "queue-view":
@@ -470,6 +476,28 @@ internal static partial class Program
             default:
                 throw new ArgumentException($"Unknown Desk action '{action}'.");
         }
+    }
+
+    private static void PrintDeskShortcutHelp()
+    {
+        var table = new Table()
+            .Border(TableBorder.Rounded)
+            .Title("[bold aqua]Flyt Desk controls[/]")
+            .AddColumn("Keys")
+            .AddColumn("Action");
+        table.AddRow("Alt+1 … Alt+0", "Jump to panes 1-10");
+        table.AddRow("Ctrl+b, A", "Focus the next pane needing attention");
+        table.AddRow("Ctrl+b, n", "Add a pane to this Desk");
+        table.AddRow("Ctrl+b, x", "Close the active pane after confirmation");
+        table.AddRow("Ctrl+b, O", "Open the action menu");
+        table.AddRow("Ctrl+b, S", "Send text");
+        table.AddRow("Ctrl+b, R", "Restart or resume the active pane");
+        table.AddRow("Ctrl+b, H", "Create a handoff");
+        table.AddRow("Ctrl+b, Q", "Queue work");
+        table.AddRow("Ctrl+b, L", "Show recent output");
+        table.AddRow("Ctrl+b, Z", "Zoom or restore the active pane");
+        table.AddRow("Ctrl+b, d", "Detach without stopping the Desk");
+        AnsiConsole.Write(table);
     }
 
     private static DeskPane RequireActionPane(DeskPane? pane, string? paneId) => pane

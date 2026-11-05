@@ -210,21 +210,23 @@ public sealed class PsmuxClient(
         string sessionName,
         CancellationToken cancellationToken = default)
     {
-        var normalizedName = PsmuxLayoutPlanner.NormalizeSessionName(sessionName);
+        _ = PsmuxLayoutPlanner.NormalizeSessionName(sessionName);
+        const string currentSession = "'#{session_name}'";
         var bindings = new (string[] Prefix, string[] Command)[]
         {
-            (["A"], ["run-shell", "-b", PowerShellCommand($"flyt desk focus --name {normalizedName} --next")]),
+            (["A"], ["run-shell", "-b", PowerShellCommand($"flyt desk focus --name {currentSession} --next")]),
             (["Z"], ["resize-pane", "-Z"]),
-            (["n"], PopupAction(normalizedName, "add-pane")),
-            (["N"], PopupAction(normalizedName, "add-pane")),
-            (["X"], PopupAction(normalizedName, "remove-pane")),
-            (["x"], PopupAction(normalizedName, "remove-pane")),
-            (["S"], PopupAction(normalizedName, "send")),
-            (["R"], PopupAction(normalizedName, "restart")),
-            (["H"], PopupAction(normalizedName, "handoff")),
-            (["Q"], PopupAction(normalizedName, "queue")),
-            (["L"], PopupAction(normalizedName, "logs", keepOpen: true)),
-            (["O"], PopupAction(normalizedName, "menu", keepOpen: true)),
+            (["n"], PopupAction("add-pane")),
+            (["N"], PopupAction("add-pane")),
+            (["X"], PopupAction("remove-pane")),
+            (["x"], PopupAction("remove-pane")),
+            (["S"], PopupAction("send")),
+            (["R"], PopupAction("restart")),
+            (["H"], PopupAction("handoff")),
+            (["Q"], PopupAction("queue")),
+            (["L"], PopupAction("logs", keepOpen: true)),
+            (["O"], PopupAction("menu", keepOpen: true)),
+            (["?"], PopupAction("help", keepOpen: true)),
         };
 
         foreach (var (prefix, command) in bindings)
@@ -240,7 +242,7 @@ public sealed class PsmuxClient(
             await RunRequiredAsync(
                 new CommandInvocation(
                     executable,
-                    ["bind-key", "-n", $"M-{shortcut}", "select-pane", "-t", $"{normalizedName}:0.{index}"]),
+                    ["bind-key", "-n", $"M-{shortcut}", "select-pane", "-t", $"#{{session_name}}:0.{index}"]),
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -312,7 +314,10 @@ public sealed class PsmuxClient(
             ("status-left", _presentation.ColorEnabled && !_presentation.HighContrast
                 ? $"#[fg=cyan,bold] FLYT #[default] · {PresentationText(workspaceLabel)} "
                 : $"#[bold] FLYT #[default] | {PresentationText(workspaceLabel)} "),
-            ("status-right", $" {PresentationText(summary)} {(_presentation.UnicodeEnabled ? "·" : "|")} %H:%M "),
+            ("status-right", $" {PresentationText(summary)} {(_presentation.UnicodeEnabled ? "·" : "|")} "
+                + $"n add {(_presentation.UnicodeEnabled ? "·" : "|")} x close "
+                + $"{(_presentation.UnicodeEnabled ? "·" : "|")} ? help "
+                + $"{(_presentation.UnicodeEnabled ? "·" : "|")} %H:%M "),
             ("pane-active-border-style", _presentation.ColorEnabled ? $"fg={stateColor},bold" : "bold"),
         };
 
@@ -489,13 +494,14 @@ public sealed class PsmuxClient(
         }
     }
 
-    private static string[] PopupAction(string sessionName, string action, bool keepOpen = false)
+    private static string[] PopupAction(string action, bool keepOpen = false)
     {
         var keep = keepOpen ? "-K" : "-E";
         return
         [
             "display-popup", "-w", "82%", "-h", "72%", keep,
-            PowerShellCommand($"flyt desk action --name {sessionName} --pane-id '#{{pane_id}}' --action {action}"),
+            PowerShellCommand(
+                $"flyt desk action --name '#{{session_name}}' --pane-id '#{{pane_id}}' --action {action}"),
         ];
     }
 

@@ -1,3 +1,4 @@
+using Flyt.Cli;
 using Flyt.Core;
 
 namespace Flyt.Tests;
@@ -95,5 +96,42 @@ public sealed class MissionTests
         Assert.Equal(first.ComputeFingerprint(), equivalent.ComputeFingerprint());
         Assert.NotEqual(first.ComputeFingerprint(), changed.ComputeFingerprint());
         Assert.Matches("^[0-9a-f]{64}$", first.ComputeFingerprint());
+    }
+
+    [Fact]
+    public void Configuration_ValidatesNameProvidersAndTimeout()
+    {
+        var missionId = Guid.NewGuid();
+        var configuration = MissionConfiguration.Create(
+            missionId,
+            "thesis-review",
+            AgentProvider.Codex,
+            AgentProvider.Claude,
+            120);
+
+        Assert.Equal("thesis-review", configuration.Name);
+        Assert.Equal(AgentProvider.Codex, configuration.BuilderProvider);
+        Assert.Equal(AgentProvider.Claude, configuration.ReviewerProvider);
+        Assert.Equal(120, configuration.TimeoutMinutes);
+        Assert.Throws<ArgumentException>(() => MissionConfiguration.Create(missionId, "not valid"));
+        Assert.Throws<ArgumentException>(() => MissionConfiguration.Create(
+            missionId,
+            "invalid-provider",
+            AgentProvider.Shell));
+        Assert.Throws<ArgumentOutOfRangeException>(() => MissionConfiguration.Create(
+            missionId,
+            "invalid-timeout",
+            timeoutMinutes: 0));
+    }
+
+    [Fact]
+    public void GuidedConfiguration_ParsesProvidersAndSafeNames()
+    {
+        Assert.Equal(AgentProvider.Claude, Program.ParseMissionProvider("claude", "builder"));
+        Assert.Equal(AgentProvider.Codex, Program.ParseMissionReviewer("codex"));
+        Assert.Null(Program.ParseMissionReviewer("auto"));
+        Assert.True(Program.IsValidMissionName("thesis-review.v2"));
+        Assert.False(Program.IsValidMissionName("thesis review"));
+        Assert.False(Program.IsValidMissionName(Guid.NewGuid().ToString("D")));
     }
 }

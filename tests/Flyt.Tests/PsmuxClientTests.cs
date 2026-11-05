@@ -43,7 +43,7 @@ public sealed class PsmuxClientTests
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.SequenceEqual([
                 "bind-key", "A", "run-shell", "-b",
-                "pwsh -NoProfile -Command \"flyt desk focus --name daily --next\"",
+                "pwsh -NoProfile -Command \"flyt desk focus --name '#{session_name}' --next\"",
             ]));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("display-popup")
@@ -51,21 +51,43 @@ public sealed class PsmuxClientTests
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.SequenceEqual([
                 "bind-key", "n", "display-popup", "-w", "82%", "-h", "72%", "-E",
-                "pwsh -NoProfile -Command \"flyt desk action --name daily --pane-id '#{pane_id}' --action add-pane\"",
+                "pwsh -NoProfile -Command \"flyt desk action --name '#{session_name}' --pane-id '#{pane_id}' --action add-pane\"",
             ]));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.SequenceEqual([
                 "bind-key", "N", "display-popup", "-w", "82%", "-h", "72%", "-E",
-                "pwsh -NoProfile -Command \"flyt desk action --name daily --pane-id '#{pane_id}' --action add-pane\"",
+                "pwsh -NoProfile -Command \"flyt desk action --name '#{session_name}' --pane-id '#{pane_id}' --action add-pane\"",
             ]));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments[0] == "bind-key"
             && value.Arguments[1] == "x"
             && value.Arguments.Any(argument => argument.Contains("--action remove-pane", StringComparison.Ordinal)));
         Assert.Contains(executor.Invocations, value =>
-            value.Arguments.SequenceEqual(["bind-key", "-n", "M-6", "select-pane", "-t", "daily:0.5"]));
+            value.Arguments.SequenceEqual(["bind-key", "?", "display-popup", "-w", "82%", "-h", "72%", "-K",
+                "pwsh -NoProfile -Command \"flyt desk action --name '#{session_name}' --pane-id '#{pane_id}' --action help\""]));
         Assert.Contains(executor.Invocations, value =>
-            value.Arguments.SequenceEqual(["bind-key", "-n", "M-0", "select-pane", "-t", "daily:0.9"]));
+            value.Arguments.SequenceEqual(["bind-key", "-n", "M-6", "select-pane", "-t", "#{session_name}:0.5"]));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.SequenceEqual(["bind-key", "-n", "M-0", "select-pane", "-t", "#{session_name}:0.9"]));
+    }
+
+    [Fact]
+    public async Task ConfigureDeskControls_UsesActiveSessionForConcurrentDesks()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(executor);
+
+        await client.ConfigureDeskControlsAsync("thesis");
+        await client.ConfigureDeskControlsAsync("volve-work");
+
+        var bindings = executor.Invocations.Where(value => value.Arguments[0] == "bind-key").ToArray();
+        Assert.All(bindings, value =>
+        {
+            Assert.DoesNotContain(value.Arguments, argument => argument.Contains("thesis", StringComparison.Ordinal));
+            Assert.DoesNotContain(value.Arguments, argument => argument.Contains("volve-work", StringComparison.Ordinal));
+        });
+        Assert.Contains(bindings, value =>
+            value.Arguments.Any(argument => argument.Contains("#{session_name}", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -82,6 +104,11 @@ public sealed class PsmuxClientTests
             && value.Arguments.Any(argument => argument.Contains(" FLYT ", StringComparison.Ordinal)));
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("pane-active-border-style") && value.Arguments.Contains("fg=yellow,bold"));
+        Assert.Contains(executor.Invocations, value =>
+            value.Arguments.Contains("status-right")
+            && value.Arguments.Any(argument => argument.Contains("n add", StringComparison.Ordinal)
+                                               && argument.Contains("x close", StringComparison.Ordinal)
+                                               && argument.Contains("? help", StringComparison.Ordinal)));
     }
 
     [Fact]
