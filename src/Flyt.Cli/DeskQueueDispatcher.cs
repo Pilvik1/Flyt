@@ -114,7 +114,12 @@ internal static class DeskQueueDispatcher
                     cancellationToken: cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    await psmux.SendTextAsync(pane.PaneId, item.Payload, submit: true, cancellationToken)
+                    await psmux.SendTextAsync(
+                        desk.SessionName,
+                        pane.PaneId,
+                        item.Payload,
+                        submit: true,
+                        cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)

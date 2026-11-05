@@ -61,7 +61,11 @@ internal static class DeskRuntime
                 {
                     try
                     {
-                        var output = await psmux.CapturePaneAsync(snapshot.PaneId, 40, cancellationToken)
+                        var output = await psmux.CapturePaneAsync(
+                            desk.SessionName,
+                            snapshot.PaneId,
+                            40,
+                            cancellationToken)
                             .ConfigureAwait(false);
                         if (ProviderAttentionDetector.Detect(registeredPane.Provider, output) is { } detected)
                         {
@@ -93,6 +97,7 @@ internal static class DeskRuntime
                         if (!string.Equals(snapshot.Title, expectedTitle, StringComparison.Ordinal))
                         {
                             await psmux.SetPanePresentationAsync(
+                                desk.SessionName,
                                 snapshot.PaneId,
                                 presentationSession,
                                 runtime.Status,
@@ -207,7 +212,11 @@ internal static class DeskRuntime
         string output;
         try
         {
-            output = await psmux.CapturePaneAsync(runtime.PaneId, 200, cancellationToken)
+            output = await psmux.CapturePaneAsync(
+                desk.SessionName,
+                runtime.PaneId,
+                200,
+                cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

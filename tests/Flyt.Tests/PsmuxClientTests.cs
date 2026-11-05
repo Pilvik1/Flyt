@@ -24,9 +24,9 @@ public sealed class PsmuxClientTests
         Assert.True(executor.Invocations.Count >= 18);
         Assert.Contains("240", executor.Invocations[0].Arguments);
         Assert.Contains("60", executor.Invocations[0].Arguments);
-        Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%1"));
-        Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%2"));
-        Assert.Contains(executor.Invocations, call => call.Arguments.Contains("%3"));
+        Assert.Contains(executor.Invocations, call => call.Arguments.Contains("my-desk:.%1"));
+        Assert.Contains(executor.Invocations, call => call.Arguments.Contains("my-desk:.%2"));
+        Assert.Contains(executor.Invocations, call => call.Arguments.Contains("my-desk:.%3"));
         var layout = executor.Invocations.Last(value => value.Arguments[0] == "select-layout");
         Assert.Equal("main-vertical", layout.Arguments[^1]);
         Assert.Contains(executor.Invocations, value => value.Arguments.Contains("pane-border-format"));
@@ -150,7 +150,7 @@ public sealed class PsmuxClientTests
 
         await client.ConfigureDeskPresentationAsync("daily", default);
         await client.ConfigureRoleBorderFormatAsync("daily", [new DeskPaneHandle("%1", session)]);
-        await client.SetPanePresentationAsync("%1", session, DeskPaneStatus.Working);
+        await client.SetPanePresentationAsync("daily", "%1", session, DeskPaneStatus.Working);
 
         Assert.Contains(executor.Invocations, value =>
             value.Arguments.Contains("window-style") && value.Arguments.Contains("dim=0"));
@@ -253,14 +253,16 @@ public sealed class PsmuxClientTests
         var executor = new FakeCommandExecutor();
         var client = new PsmuxClient(executor);
 
-        await client.SendTextAsync("%7", "line one\nline; two", submit: true);
+        await client.SendTextAsync("daily", "%7", "line one\nline; two", submit: true);
 
         Assert.Equal(2, executor.Invocations.Count);
         var paste = executor.Invocations[0];
         Assert.Equal("send-paste", paste.Arguments[0]);
+        Assert.Contains("daily:.%7", paste.Arguments);
         Assert.Equal("line one\nline; two", System.Text.Encoding.UTF8.GetString(
             Convert.FromBase64String(paste.Arguments[^1])));
         Assert.Equal("send-keys", executor.Invocations[1].Arguments[0]);
+        Assert.Contains("daily:.%7", executor.Invocations[1].Arguments);
     }
 
     [Fact]
@@ -269,10 +271,25 @@ public sealed class PsmuxClientTests
         var executor = new FakeCommandExecutor();
         var client = new PsmuxClient(executor);
 
-        await client.RemovePaneAsync("%7");
+        await client.RemovePaneAsync("daily", "%7");
 
         var invocation = Assert.Single(executor.Invocations);
-        Assert.Equal(["kill-pane", "-t", "%7"], invocation.Arguments);
+        Assert.Equal(["kill-pane", "-t", "daily:.%7"], invocation.Arguments);
+    }
+
+    [Fact]
+    public async Task PaneOperations_QualifySessionLocalPaneIds()
+    {
+        var executor = new FakeCommandExecutor();
+        var client = new PsmuxClient(executor);
+        var session = Session(AgentProvider.Claude, "builder", "claude");
+
+        await client.FocusAsync("daily", "%7");
+        await client.CapturePaneAsync("daily", "%7", 20);
+        await client.RestartPaneAsync("daily", "%7", session);
+
+        Assert.Equal(5, executor.Invocations.Count);
+        Assert.All(executor.Invocations, invocation => Assert.Contains("daily:.%7", invocation.Arguments));
     }
 
     [Theory]

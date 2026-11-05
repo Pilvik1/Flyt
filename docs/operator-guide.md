@@ -135,9 +135,10 @@ flyt desk status
 ```
 
 Both psmux sessions continue running independently. Flyt resolves cockpit bindings
-against the active session, so opening `volve-work` does not retarget controls in
-`thesis`. Resource ceilings remain per Desk; use `flyt desk status` to review aggregate
-activity before starting expensive work in both.
+against the active session and qualifies pane IDs with their owning Desk, so opening
+`volve-work` cannot retarget controls or pane actions in `thesis`. Resource ceilings
+remain per Desk; use `flyt desk status` to review aggregate activity before starting
+expensive work in both.
 
 ### See what needs attention
 

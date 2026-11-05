@@ -107,7 +107,7 @@ internal static partial class Program
             && desk.Panes.SingleOrDefault(value => string.Equals(
                 value.Name, desk.FocusedPaneName, StringComparison.OrdinalIgnoreCase)) is { } focused)
         {
-            await psmux.FocusAsync(focused.PaneId, cancellationToken).ConfigureAwait(false);
+            await psmux.FocusAsync(name, focused.PaneId, cancellationToken).ConfigureAwait(false);
         }
 
         var workspaceLabel = await GetWorkspaceLabelAsync(desk, cancellationToken).ConfigureAwait(false);
@@ -391,12 +391,14 @@ internal static partial class Program
                 var targetName = jumpTarget.Split('·', 2, StringSplitOptions.TrimEntries)[0];
                 var targetPane = desk.Panes.Single(value => string.Equals(
                     value.Name, targetName, StringComparison.OrdinalIgnoreCase));
-                await psmux.FocusAsync(targetPane.PaneId, cancellationToken).ConfigureAwait(false);
+                await psmux.FocusAsync(desk.SessionName, targetPane.PaneId, cancellationToken)
+                    .ConfigureAwait(false);
                 return 0;
 
             case "logs":
                 pane = RequireActionPane(pane, paneId);
                 var output = await psmux.CapturePaneAsync(
+                    desk.SessionName,
                     pane.PaneId,
                     ParseBoundedIntOption(args, "--lines", 160, 1, 10000),
                     cancellationToken).ConfigureAwait(false);
@@ -411,7 +413,11 @@ internal static partial class Program
                     return 2;
                 }
 
-                await psmux.RestartPaneAsync(pane.PaneId, SessionFromPane(pane, providers), cancellationToken)
+                await psmux.RestartPaneAsync(
+                    desk.SessionName,
+                    pane.PaneId,
+                    SessionFromPane(pane, providers),
+                    cancellationToken)
                     .ConfigureAwait(false);
                 await store.AddDeskEventAsync(
                     desk.Id, "pane.restarted", pane.Name, "Restarted from cockpit action.",
@@ -428,7 +434,12 @@ internal static partial class Program
                     return 2;
                 }
 
-                await psmux.SendTextAsync(pane.PaneId, text, submit: true, cancellationToken)
+                await psmux.SendTextAsync(
+                    desk.SessionName,
+                    pane.PaneId,
+                    text,
+                    submit: true,
+                    cancellationToken)
                     .ConfigureAwait(false);
                 await store.AddDeskEventAsync(
                     desk.Id, "pane.sent", pane.Name, $"Cockpit sent {text.Length} characters.",

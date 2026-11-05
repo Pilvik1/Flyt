@@ -95,6 +95,9 @@ dispatches queued work beside the attached psmux client. SQLite persists the
 preferred layout and most recently active stable pane name for stop/reopen recovery.
 Because psmux key tables are shared across sessions, Flyt bindings resolve the active
 `#{session_name}` at invocation time; they never embed the last configured Desk name.
+Pane IDs are session-local, so every pane command uses a qualified
+`<desk>:.<pane-id>` target. This prevents a focus, send, restart, capture, style, or
+close operation in one Desk from reaching a same-numbered pane in another Desk.
 
 Targeted sending uses psmux's base64 `send-paste` boundary, followed by a separate
 submit key. This avoids command parsing and multiline corruption. Structured

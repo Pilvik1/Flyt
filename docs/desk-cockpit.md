@@ -101,8 +101,9 @@ flyt desk remove-pane --name full-review --pane reviewer-2
 The last pane cannot be removed; use `flyt desk stop` to close the whole Desk.
 
 Bindings resolve `#{session_name}` when the key is pressed instead of embedding the
-last configured Desk. This keeps add, close, focus, popups, and direct pane jumps scoped
-to the active Desk when several named Desks share one psmux server.
+last configured Desk. Flyt also qualifies each session-local pane ID with its owning
+Desk before focus, send, restart, capture, style, or close operations. This keeps all
+controls scoped to the active Desk when several named Desks share one psmux server.
 
 `flyt desk watch --notify` refreshes the cockpit and requests both a native Windows
 toast and an OSC 9/BEL terminal fallback when a pane newly needs input, completes,
@@ -164,7 +165,7 @@ working-tree diff exists. Optional decisions, verification evidence, and blocker
 travel with the bundle. `--send` pastes the artifact path and requested action into
 the destination pane.
 
-Windows CI runs a real ten-pane psmux lifecycle using shell panes and proves
+Windows CI runs real ten-pane and concurrent two-Desk psmux lifecycles using shell panes and proves
 integrated chrome configuration, role/state headers, action dispatch, re-adoption,
 queueing, handoffs, history, focus persistence, stop/reopen, and recovery after
 unexpected psmux session loss. The target-host proof remains mandatory for
